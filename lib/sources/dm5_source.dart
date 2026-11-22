@@ -45,6 +45,7 @@ class Dm5Source extends ComicSource {
   Map<String, String> getImageHeaders(String refererUrl) => {
         'Referer': _toFullUrl(refererUrl),
         'User-Agent': _mobileUa,
+        'Cookie': 'isAdult=1',
         'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
       };
 
@@ -151,6 +152,7 @@ class Dm5Source extends ComicSource {
     final mid = extractVar('DM5_MID');
     final dt = extractVar('DM5_VIEWSIGN_DT');
     final sign = extractVar('DM5_VIEWSIGN');
+    final key = extractVar('dm5_key');
     final totalPages = int.tryParse(extractVar('DM5_IMAGE_COUNT')) ?? 0;
 
     final imageUrls = <String>[];
@@ -162,7 +164,7 @@ class Dm5Source extends ComicSource {
         queryParameters: {
           'cid': cid,
           'page': page,
-          'key': '',
+          'key': key,
           'language': 1,
           'gtk': 6,
           '_cid': cid,
@@ -186,6 +188,9 @@ class Dm5Source extends ComicSource {
         if (!imageUrls.contains(u)) imageUrls.add(u);
       }
       page += urls.length;
+      if (page <= totalPages) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
     }
 
     return imageUrls;
