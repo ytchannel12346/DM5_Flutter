@@ -7,7 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'models/comic.dart';
 import 'pages/detail_page.dart';
 import 'sources/comic_source.dart';
+import 'pages/settings_pages.dart';
+import 'services/app_settings.dart';
 
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppSettings.instance.load();
+  runApp(const ComicReaderApp());
+}
 void main() {
   runApp(const ComicReaderApp());
 }
@@ -601,6 +608,24 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
           subtitle:
               '版本 ${const String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0')} · DM5 Flutter Archive',
           onTap: () {},
+          _profileCard(
+       icon: Icons.bar_chart_rounded,
+       title: '統計',
+       subtitle: '閱讀記錄、藏書與指尖落點',
+       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsPage())),
+     ),
+     _profileCard(
+       icon: Icons.bookmark_border_rounded,
+       title: '書籤',
+       subtitle: '${AppSettings.instance.bookmarksByBook.length} 本書的書籤與摘錄',
+       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarksPage())),
+     ),
+     _profileCard(
+       icon: Icons.settings_outlined,
+       title: '設置',
+       subtitle: '閱讀、外觀、性能與本地數據',
+       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsHubPage())),
+     ),
         ),
       ],
     );
