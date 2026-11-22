@@ -33,12 +33,14 @@ class _ReaderPageState extends State<ReaderPage> {
   late int _currentIndex = widget.initialIndex;
   List<String> _images = [];
   bool _loading = true;
+  bool _isLoadingChapter = false;
   bool _showOverlay = true;
   String? _error;
 
   int _currentPage = 0;
   final PageController _pageController = PageController();
   final ScrollController _scrollController = ScrollController();
+  final Map<String, int> _retryNonce = {};
 
   ReadMode _readMode = ReadMode.webtoon;
   ReadDirection _readDirection = ReadDirection.ltr;
@@ -98,12 +100,17 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _loadChapter() async {
+    if (_isLoadingChapter) return;
+    _isLoadingChapter = true;
+
     setState(() {
       _loading = true;
       _error = null;
       _images = [];
       _currentPage = 0;
+      _retryNonce.clear();
     });
+
     try {
       final urls = await widget.source.getChapterImages(_currentChapter.url);
       if (mounted) {
@@ -119,6 +126,8 @@ class _ReaderPageState extends State<ReaderPage> {
           _loading = false;
         });
       }
+    } finally {
+      _isLoadingChapter = false;
     }
   }
 
@@ -496,8 +505,13 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildImageItem(String url) {
+    final nonce = _retryNonce[url] ?? 0;
+    final effectiveUrl =
+        nonce == 0 ? url : '$url${url.contains('?') ? '&' : '?'}_r=$nonce';
+
     return CachedNetworkImage(
-      imageUrl: url,
+      key: ValueKey('$url#$nonce'),
+      imageUrl: effectiveUrl,
       httpHeaders: widget.source.getImageHeaders(_currentChapter.url),
       fit: _boxFit,
       placeholder: (_, __) => SizedBox(
@@ -508,27 +522,35 @@ class _ReaderPageState extends State<ReaderPage> {
           ),
         ),
       ),
-      errorWidget: (_, errUrl, error) => Container(
-        padding: const EdgeInsets.all(16),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.broken_image_outlined,
-              color: _isDarkBg ? Colors.white54 : Colors.black38,
-              size: 32,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '錯誤：$error\n網址：$errUrl',
-              style: TextStyle(
-                fontSize: 11,
-                color: _isDarkBg ? Colors.white70 : Colors.black54,
+      errorWidget: (_, errUrl, error) => GestureDetector(
+        onTap: () async {
+          await CachedNetworkImage.evictFromCache(errUrl);
+          await CachedNetworkImage.evictFromCache(url);
+          if (!mounted) return;
+          setState(() => _retryNonce[url] = nonce + 1);
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.refresh_rounded,
+                color: _isDarkBg ? Colors.white54 : Colors.black38,
+                size: 32,
               ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                '點擊重試 · 錯誤：$error\n網址：$errUrl',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: _isDarkBg ? Colors.white70 : Colors.black54,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
