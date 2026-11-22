@@ -1,7 +1,10 @@
-import 'dart:ui';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../services/app_settings.dart';
+import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../models/comic.dart';
+import '../services/history_service.dart';
+import '../sources/comic_source.dart';
+import '../sources/local_comic_source.dart';
+import 'reader_page.dart';
 
 /// 共用暖紙白設定頁外框
 class _ArchiveScaffold extends StatelessWidget {
@@ -527,48 +530,168 @@ class StorageSettingsPage extends StatelessWidget {
 }
 
 /// 6. 閱讀歷史 (ARCHIVE / READING LOG)
-class ReadingHistoryPage extends StatelessWidget {
+/// 6. 閱讀歷史 (ARCHIVE / READING LOG)
+class ReadingHistoryPage extends StatefulWidget {
   const ReadingHistoryPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final s = AppSettings.instance;
-    return ListenableBuilder(
-      listenable: s,
-      builder: (_, __) => _ArchiveScaffold(
-        title: '閱讀歷史',
-        subtitle: 'ARCHIVE / READING LOG',
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline, color: Color(0xFF1F1F1F)),
-          onPressed: () => s.clearHistory(),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-          children: [
-            _sectionTag('02 / READING LOG', '最近閱讀 (${s.history.length} 本書)'),
-            const Text(
-              '未收藏的作品也會記錄。移除歷史只隱藏記錄，書架與進度保留。',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-            const SizedBox(height: 14),
-            if (s.history.isEmpty)
-              _cardBox(
-                padding: const EdgeInsets.all(24),
-                child: const Center(child: Text('暫無閱讀歷史記錄', style: TextStyle(color: Colors.black54))),
-              )
-            else
-              ...s.history.map(
-                (h) => _cardBox(
-                  child: ListTile(
-                    title: Text(h.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('${h.chapterTitle} · 本章 ${h.progressPercent}%\n${h.timestamp}'),
-                    isThreeLine: true,
-                  ),
-                ),
-              ),
+  State<ReadingHistoryPage> createState() => _ReadingHistoryPageState();
+}
+
+class _ReadingHistoryPageState extends State<ReadingHistoryPage> {
+  List<ReadHistoryItem> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    final items = await HistoryService.loadHistory();
+    if (mounted) {
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    }
+  }
+
+  void _openHistory(ReadHistoryItem item) {
+    final source = item.sourceId == 'local'
+        ? LocalComicSource()
+        : SourceManager.getById(item.sourceId);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReaderPage(
+          source: source,
+          chapters: [
+            ComicChapter(title: item.chapterTitle, url: item.chapterUrl),
           ],
+          initialIndex: 0,
         ),
       ),
+    ).then((_) => _refresh());
+  }
+
+  String _formatTime(int millis) {
+    if (millis <= 0) return '';
+    final dt = DateTime.fromMillisecondsSinceEpoch(millis);
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final h = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '$m/$d $h:$min';
+  }
+
+  Widget _buildCover(ReadHistoryItem item) {
+    if (item.cover.isEmpty) {
+      return Container(
+        width: 48,
+        height: 64,
+        color: Colors.black12,
+        child: const Icon(Icons.menu_book_outlined, color: Colors.black38),
+      );
+    }
+    if (!item.cover.startsWith('http://') &&
+        !item.cover.startsWith('https://')) {
+      return Image.file(
+        File(item.cover),
+        width: 48,
+        height: 64,
+        fit: BoxFit.cover,
+      );
+    }
+    final source = SourceManager.getById(item.sourceId);
+    return CachedNetworkImage(
+      imageUrl: item.cover,
+      httpHeaders: source.getImageHeaders(item.comicUrl),
+      width: 48,
+      height: 64,
+      fit: BoxFit.cover,
+      errorWidget: (_, __, ___) => Container(
+        width: 48,
+        height: 64,
+        color: Colors.black12,
+        child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _ArchiveScaffold(
+      title: '閱讀歷史',
+      subtitle: 'ARCHIVE / READING LOG',
+      trailing: IconButton(
+        icon: const Icon(Icons.delete_outline, color: Color(0xFF1F1F1F)),
+        onPressed: () async {
+          await HistoryService.clearAll();
+          AppSettings.instance.clearHistory();
+          await _refresh();
+        },
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              children: [
+                _sectionTag('02 / READING LOG', '最近閱讀 (${_items.length} 本書)'),
+                const Text(
+                  '未收藏的作品也會記錄。長按單筆可移除記錄，點擊可直接續讀。',
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                const SizedBox(height: 14),
+                if (_items.isEmpty)
+                  _cardBox(
+                    padding: const EdgeInsets.all(24),
+                    child: const Center(
+                      child: Text(
+                        '暫無閱讀歷史記錄',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                    ),
+                  )
+                else
+                  ..._items.map(
+                    (h) => _cardBox(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: _buildCover(h),
+                        ),
+                        title: Text(
+                          h.comicTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          '${h.chapterTitle} · 第 ${h.pageIndex + 1} 頁\n${_formatTime(h.updatedAt)}',
+                        ),
+                        isThreeLine: true,
+                        trailing: const Icon(
+                          Icons.chevron_right,
+                          color: Colors.black38,
+                        ),
+                        onTap: () => _openHistory(h),
+                        onLongPress: () async {
+                          await HistoryService.removeItem(h);
+                          await _refresh();
+                        },
+                      ),
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }
