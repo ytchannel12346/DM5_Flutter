@@ -40,6 +40,9 @@ jobs:
           if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
             sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' "$MANIFEST"
           fi
+          if ! grep -q "usesCleartextTraffic" "$MANIFEST"; then
+            sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$MANIFEST"
+          fi
 
       - name: Install dependencies
         run: flutter pub get
