@@ -96,15 +96,31 @@ class ManhuarenSource extends ComicSource {
     for (final card in cards) {
       final anchor = card.localName == 'a' ? card : card.querySelector('a[href]');
       final href = anchor?.attributes['href']?.trim() ?? '';
-      if (href.isEmpty || href.contains('javascript:')) continue;
-      if (href.contains('/manhua-list') || href.contains('/search')) continue;
-      if (!RegExp(r'/(?:manhua-[^/]+|\d+)/?$').hasMatch(href)) continue;
+      if (href.isEmpty ||
+          href.startsWith('#') ||
+          href.toLowerCase().startsWith('javascript:')) {
+        continue;
+      }
+      if (href.contains('/manhua-list') ||
+          href.contains('/search') ||
+          href.contains('/tag') ||
+          href.contains('/category') ||
+          href.contains('/rank') ||
+          href.contains('/login')) {
+        continue;
+      }
+      if (!RegExp(r'/\d+/?(?:\.html)?$').hasMatch(href) &&
+          !RegExp(r'/\d+/').hasMatch(href) &&
+          !RegExp(r'manhua-[^/]+', caseSensitive: false).hasMatch(href)) {
+        continue;
+      }
 
       final fullUrl = _toFullUrl(href);
       if (!seenUrls.add(fullUrl)) continue;
 
       final img = card.querySelector('img');
       final rawCover = img?.attributes['data-src'] ??
+          img?.attributes['lz_src'] ??
           img?.attributes['src'] ??
           _extractCssUrl(
             card.querySelector('[style*="background"]')?.attributes['style'] ??
