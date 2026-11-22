@@ -505,9 +505,24 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildImageItem(String url) {
-    final nonce = _retryNonce[url] ?? 0;
-    final effectiveUrl =
-        nonce == 0 ? url : '$url${url.contains('?') ? '&' : '?'}_r=$nonce';
+Widget _buildImageItem(String url) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return Image.file(
+        File(url),
+        fit: _boxFit,
+        errorBuilder: (_, error, __) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            '本地圖片讀取失敗：$error',
+            style: TextStyle(
+              color: _isDarkBg ? Colors.white70 : Colors.black54,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Existing CachedNetworkImage code stays below...
 
     return CachedNetworkImage(
       key: ValueKey('$url#$nonce'),
