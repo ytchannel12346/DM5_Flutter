@@ -200,12 +200,18 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 6,
+                      ),
                       child: Row(
                         children: [
                           Text(
                             '本話 $displayPage / $totalPages 頁',
-                            style: const TextStyle(fontSize: 13, color: Colors.black54),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.black54,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -251,22 +257,33 @@ class _ReaderPageState extends State<ReaderPage> {
                               style: TextStyle(
                                 color: isCurrent ? Colors.black87 : Colors.black38,
                                 fontFamily: 'monospace',
-                                fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                fontWeight: isCurrent
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                               ),
                             ),
                             title: Text(
                               ch.title,
                               style: TextStyle(
-                                fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                                fontWeight: isCurrent
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
                                 color: const Color(0xFF1F1F1F),
                               ),
                             ),
                             subtitle: Text(
                               isCurrent ? '在讀 · 預設' : '預設',
-                              style: const TextStyle(fontSize: 12, color: Colors.black45),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black45,
+                              ),
                             ),
                             trailing: isCurrent
-                                ? const Icon(Icons.play_arrow_rounded, color: Colors.black87, size: 20)
+                                ? const Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: Colors.black87,
+                                    size: 20,
+                                  )
                                 : null,
                             onTap: () {
                               Navigator.pop(ctx);
@@ -454,7 +471,9 @@ class _ReaderPageState extends State<ReaderPage> {
                 duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFEBE9E4) : Colors.transparent,
+                  color: isSelected
+                      ? const Color(0xFFEBE9E4)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 alignment: Alignment.center,
@@ -487,7 +506,7 @@ class _ReaderPageState extends State<ReaderPage> {
           ),
         ),
       ),
-errorWidget: (_, url, error) => Container(
+      errorWidget: (_, errUrl, error) => Container(
         padding: const EdgeInsets.all(16),
         alignment: Alignment.center,
         child: Column(
@@ -500,7 +519,7 @@ errorWidget: (_, url, error) => Container(
             ),
             const SizedBox(height: 8),
             Text(
-              '錯誤：$error\n網址：$url',
+              '錯誤：$error\n網址：$errUrl',
               style: TextStyle(
                 fontSize: 11,
                 color: _isDarkBg ? Colors.white70 : Colors.black54,
@@ -508,9 +527,6 @@ errorWidget: (_, url, error) => Container(
               textAlign: TextAlign.center,
             ),
           ],
-        ),
-      ),
-          ),
         ),
       ),
     );
@@ -620,11 +636,18 @@ errorWidget: (_, url, error) => Container(
                 child: SafeArea(
                   bottom: false,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     child: Row(
                       children: [
                         IconButton(
-                          icon: Icon(Icons.chevron_left, color: topFg, size: 28),
+                          icon: Icon(
+                            Icons.chevron_left,
+                            color: topFg,
+                            size: 28,
+                          ),
                           onPressed: () => Navigator.pop(context),
                         ),
                         Expanded(
@@ -654,7 +677,10 @@ errorWidget: (_, url, error) => Container(
                         ),
                         IconButton(
                           tooltip: '目錄',
-                          icon: Icon(Icons.format_list_bulleted_rounded, color: topFg),
+                          icon: Icon(
+                            Icons.format_list_bulleted_rounded,
+                            color: topFg,
+                          ),
                           onPressed: _openTocSheet,
                         ),
                         IconButton(
@@ -675,7 +701,10 @@ errorWidget: (_, url, error) => Container(
               right: 0,
               child: Container(
                 color: topBg,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: SafeArea(
                   top: false,
                   child: Row(
