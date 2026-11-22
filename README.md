@@ -8,7 +8,7 @@
 支援平板電腦版本<br>
 
 # 安裝<br>
-適用於 Android 8.0 以上及iOS，下載安裝附件中的 APK & IPA即可。<br>
+適用於 Android 8.0 (under v1.0.56)Android 16.0 (after v1.0.56)以上及iOS，下載安裝附件中的 APK & IPA即可。<br>
 安裝說明<br>
 Android：直接覆蓋更新，不要先卸載舊版。<br>
 iOS：提供未簽名包，主應用程式與小元件皆需自行簽章。<br>
