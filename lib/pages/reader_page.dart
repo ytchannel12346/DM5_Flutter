@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/comic.dart';
+import '../services/app_l10n.dart';
+import '../services/app_settings.dart';
 import '../services/history_service.dart';
 import '../sources/comic_source.dart';
 
@@ -40,6 +43,7 @@ class _ReaderPageState extends State<ReaderPage> {
   String? _error;
 
   int _currentPage = 0;
+  final FocusNode _readerFocusNode = FocusNode();
   final PageController _pageController = PageController();
   final ScrollController _scrollController = ScrollController();
   final Map<String, int> _retryNonce = {};
@@ -96,9 +100,41 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
+    _readerFocusNode.dispose();
     _pageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return;
+    if (!AppSettings.instance.volumeKeyPaging || _images.isEmpty) return;
+
+    if (event.logicalKey == LogicalKeyboardKey.audioVolumeDown) {
+      if (_readMode == ReadMode.webtoon && _scrollController.hasClients) {
+        final nextOffset = (_scrollController.offset + 500)
+            .clamp(0.0, _scrollController.position.maxScrollExtent);
+        _scrollController.animateTo(
+          nextOffset,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _jumpToPage(_currentPage + 1);
+      }
+    } else if (event.logicalKey == LogicalKeyboardKey.audioVolumeUp) {
+      if (_readMode == ReadMode.webtoon && _scrollController.hasClients) {
+        final prevOffset = (_scrollController.offset - 500)
+            .clamp(0.0, _scrollController.position.maxScrollExtent);
+        _scrollController.animateTo(
+          prevOffset,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _jumpToPage(_currentPage - 1);
+      }
+    }
   }
 
   Future<void> _recordHistory() async {
@@ -205,9 +241,9 @@ class _ReaderPageState extends State<ReaderPage> {
                       padding: const EdgeInsets.fromLTRB(20, 14, 16, 8),
                       child: Row(
                         children: [
-                          const Text(
-                            '目錄',
-                            style: TextStyle(
+                          Text(
+                            AppL10n.t('toc'),
+                            style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF1F1F1F),
@@ -372,9 +408,9 @@ class _ReaderPageState extends State<ReaderPage> {
                     const SizedBox(height: 14),
                     Row(
                       children: [
-                        const Text(
-                          '閱讀設定',
-                          style: TextStyle(
+                        Text(
+                          AppL10n.t('reader_settings'),
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF1F1F1F),
@@ -680,133 +716,144 @@ class _ReaderPageState extends State<ReaderPage> {
         : const Color.fromRGBO(247, 246, 242, 0.94);
     final topFg = _isDarkBg ? Colors.white : const Color(0xFF1F1F1F);
 
-    return Scaffold(
-      backgroundColor: _backgroundColor,
-      body: Stack(
-        children: [
-          GestureDetector(
-            onTap: () => setState(() => _showOverlay = !_showOverlay),
-            child: _buildReaderContent(),
-          ),
-          if (_showOverlay)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                color: topBg,
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+    return KeyboardListener(
+      focusNode: _readerFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleKeyEvent,
+      child: Scaffold(
+        backgroundColor: _backgroundColor,
+        body: Stack(
+          children: [
+            GestureDetector(
+              onTap: () => setState(() => _showOverlay = !_showOverlay),
+              child: _buildReaderContent(),
+            ),
+            if (_showOverlay)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  color: topBg,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              Icons.chevron_left,
+                              color: topFg,
+                              size: 28,
+                            ),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _currentChapter.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: topFg,
+                                  ),
+                                ),
+                                Text(
+                                  '${widget.source.name} / COMIC',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: topFg.withOpacity(0.55),
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: AppL10n.t('toc'),
+                            icon: Icon(
+                              Icons.format_list_bulleted_rounded,
+                              color: topFg,
+                            ),
+                            onPressed: _openTocSheet,
+                          ),
+                          IconButton(
+                            tooltip: AppL10n.t('reader_settings'),
+                            icon: Icon(Icons.tune_rounded, color: topFg),
+                            onPressed: _openSettingsSheet,
+                          ),
+                        ],
+                      ),
                     ),
+                  ),
+                ),
+              ),
+            if (_showOverlay)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  color: topBg,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: SafeArea(
+                    top: false,
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        IconButton(
-                          icon: Icon(
-                            Icons.chevron_left,
-                            color: topFg,
-                            size: 28,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _currentChapter.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: topFg,
-                                ),
-                              ),
-                              Text(
-                                '${widget.source.name} / COMIC',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: topFg.withOpacity(0.55),
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
-                            ],
+                        TextButton.icon(
+                          onPressed: _currentIndex < widget.chapters.length - 1
+                              ? () {
+                                  _currentIndex++;
+                                  _loadChapter();
+                                }
+                              : null,
+                          icon: Icon(Icons.chevron_left, color: topFg),
+                          label: Text(
+                            AppL10n.t('prev_chapter'),
+                            style: TextStyle(color: topFg),
                           ),
                         ),
-                        IconButton(
-                          tooltip: '目錄',
-                          icon: Icon(
-                            Icons.format_list_bulleted_rounded,
-                            color: topFg,
+                        Text(
+                          _images.isEmpty
+                              ? '載入中...'
+                              : '${_currentPage + 1} / ${_images.length}',
+                          style: TextStyle(
+                            color: topFg.withOpacity(0.7),
+                            fontFamily: 'monospace',
                           ),
-                          onPressed: _openTocSheet,
                         ),
-                        IconButton(
-                          tooltip: '閱讀設定',
-                          icon: Icon(Icons.tune_rounded, color: topFg),
-                          onPressed: _openSettingsSheet,
+                        TextButton.icon(
+                          onPressed: _currentIndex > 0
+                              ? () {
+                                  _currentIndex--;
+                                  _loadChapter();
+                                }
+                              : null,
+                          icon: Icon(Icons.chevron_right, color: topFg),
+                          label: Text(
+                            AppL10n.t('next_chapter'),
+                            style: TextStyle(color: topFg),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-            ),
-          if (_showOverlay)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                color: topBg,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      TextButton.icon(
-                        onPressed: _currentIndex < widget.chapters.length - 1
-                            ? () {
-                                _currentIndex++;
-                                _loadChapter();
-                              }
-                            : null,
-                        icon: Icon(Icons.chevron_left, color: topFg),
-                        label: Text('上一話', style: TextStyle(color: topFg)),
-                      ),
-                      Text(
-                        _images.isEmpty
-                            ? '載入中...'
-                            : '${_currentPage + 1} / ${_images.length}',
-                        style: TextStyle(
-                          color: topFg.withOpacity(0.7),
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: _currentIndex > 0
-                            ? () {
-                                _currentIndex--;
-                                _loadChapter();
-                              }
-                            : null,
-                        icon: Icon(Icons.chevron_right, color: topFg),
-                        label: Text('下一話', style: TextStyle(color: topFg)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
