@@ -1,6 +1,7 @@
 import '../models/comic.dart';
 import 'dm5_source.dart';
 import 'manhuagui_source.dart';
+import 'manhuaren_source.dart';
 
 abstract class ComicSource {
   String get id;
@@ -19,7 +20,7 @@ class SourceManager {
   static final List<ComicSource> sources = [
     Dm5Source(),
     ManhuaguiSource(),
-        // 未來可以在這裡直接加入其他網站，例如：ManhuaguiSource(),
+    ManhuarenSource(),
   ];
 
   static ComicSource current = sources.first;
