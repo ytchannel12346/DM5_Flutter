@@ -11,11 +11,11 @@ class ManhuarenSource extends ComicSource {
   String get name => '漫畫人 (Manhuaren)';
 
   @override
-  String get baseUrl => 'https://m.manhuaren.com';
+  String get baseUrl => 'https://www.manhuaren.com';
 
   static const String _ua =
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 '
-      '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
   late final Dio _dio = Dio(
     BaseOptions(
