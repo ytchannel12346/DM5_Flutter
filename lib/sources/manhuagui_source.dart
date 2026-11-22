@@ -54,7 +54,7 @@ class ManhuaguiSource extends ComicSource {
 
   @override
   Map<String, String> getImageHeaders(String refererUrl) => {
-        'Referer': _toFullUrl(refererUrl),
+        'Referer': 'https://m.manhuagui.com/',
         'User-Agent': _mobileUa,
         'Cookie': 'isAdult=1',
         'Accept':
@@ -281,15 +281,19 @@ class ManhuaguiSource extends ComicSource {
 
   List<String> _extractImageUrlsFromScript(String source) {
     final filesMatch =
-        RegExp(r'''["']?files["']?\s*:\s*\[([^\]]+)\]''').firstMatch(source);
+        RegExp(r'''["']?(?:files|images)["']?\s*:\s*\[([^\]]+)\]''')
+            .firstMatch(source);
     if (filesMatch == null) return [];
 
     final pathMatch =
         RegExp(r'''["']?path["']?\s*:\s*["']([^"']+)["']''').firstMatch(source);
-    final host = pathMatch?.group(1)?.trim() ?? 'https://i.hamreus.com';
-    final prefix = host.startsWith('http')
-        ? host
-        : (host.startsWith('//') ? 'https:$host' : 'https://$host');
+    final rawPath = pathMatch?.group(1)?.trim() ?? '';
+    const host = 'https://i.hamreus.com';
+    final prefix = rawPath.startsWith('http')
+        ? rawPath
+        : (rawPath.startsWith('//')
+            ? 'https:$rawPath'
+            : '$host${rawPath.startsWith('/') ? rawPath : '/$rawPath'}');
     final cleanPrefix =
         prefix.endsWith('/') ? prefix.substring(0, prefix.length - 1) : prefix;
 
@@ -320,7 +324,7 @@ class ManhuaguiSource extends ComicSource {
 
   String _unpackJs(String packed) {
     final match = RegExp(
-      r"\}\('(.*)',\s*(\d+),\s*(\d+),\s*'([^']*)'\.split\('\Vert{}'\)",
+      r"\}\('(.*?)',\s*(\d+),\s*(\d+),\s*'([^']+)'(?:\.split\('\|'\)|\[['\\x73p]+l['\\x69c]+\]\(['\\x7c]+\)|\.splic\('\|'\))",
       dotAll: true,
     ).firstMatch(packed);
     if (match == null) return '';
@@ -328,7 +332,11 @@ class ManhuaguiSource extends ComicSource {
     final payload = match.group(1)!;
     final radix = int.parse(match.group(2)!);
     final count = int.parse(match.group(3)!);
-    final symtab = match.group(4)!.split('|');
+    final rawDict = match.group(4)!;
+
+    final symtab = rawDict.contains('|')
+        ? rawDict.split('|')
+        : _decompressFromBase64(rawDict).split('|');
 
     String encodeBase(int num) {
       const chars =
