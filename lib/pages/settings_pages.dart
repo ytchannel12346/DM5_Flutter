@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/comic.dart';
+import '../services/app_l10n.dart';
 import '../services/app_settings.dart';
 import '../services/history_service.dart';
 import '../sources/comic_source.dart';
@@ -142,19 +143,22 @@ class SettingsHubPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _ArchiveScaffold(
-      title: '設置',
-      subtitle: 'SYSTEM / PREFERENCES',
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-        children: [
-          _navCard(context, Icons.grid_view_rounded, '使用方式', '啟動與續讀、書架及離線適配', const UsageSettingsPage()),
-          _navCard(context, Icons.text_fields_rounded, '閱讀與外觀', '外觀模式、主題配色、字體與語言', const AppearanceSettingsPage()),
-          _navCard(context, Icons.speed_rounded, '性能與動效', '振動反饋、幀率偏好與動態效果', const PerformanceSettingsPage()),
-          _navCard(context, Icons.wifi_rounded, '局域網續讀', '連接自己的設備，接著上次的位置閱讀', null),
-          _navCard(context, Icons.widgets_outlined, '小組件', '配置桌面上的閱讀主題與隱私', null),
-          _navCard(context, Icons.folder_outlined, '數據與存儲', '閱讀歷史、緩存管理與備份恢復', const StorageSettingsPage()),
-        ],
+    return ListenableBuilder(
+      listenable: AppSettings.instance,
+      builder: (_, __) => _ArchiveScaffold(
+        title: AppL10n.t('settings'),
+        subtitle: 'SYSTEM / PREFERENCES',
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          children: [
+            _navCard(context, Icons.grid_view_rounded, AppL10n.t('usage'), '啟動與續讀、音量鍵翻頁及離線適配', const UsageSettingsPage()),
+            _navCard(context, Icons.text_fields_rounded, AppL10n.t('appearance'), '外觀模式、主題配色、字體與語言', const AppearanceSettingsPage()),
+            _navCard(context, Icons.speed_rounded, AppL10n.t('performance'), '振動反饋、幀率偏好與動態效果', const PerformanceSettingsPage()),
+            _navCard(context, Icons.wifi_rounded, '局域網續讀', '連接自己的設備，接著上次的位置閱讀', null),
+            _navCard(context, Icons.widgets_outlined, '小組件', '配置桌面上的閱讀主題與隱私', null),
+            _navCard(context, Icons.folder_outlined, AppL10n.t('storage'), '閱讀歷史、緩存管理與備份恢復', const StorageSettingsPage()),
+          ],
+        ),
       ),
     );
   }
@@ -188,12 +192,17 @@ class UsageSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AppSettings.instance;
-    const tabs = ['發現', '書架', '本地', '我的'];
+    final tabs = [
+      AppL10n.t('discover'),
+      AppL10n.t('bookshelf'),
+      AppL10n.t('local'),
+      AppL10n.t('mine'),
+    ];
 
     return ListenableBuilder(
       listenable: s,
       builder: (_, __) => _ArchiveScaffold(
-        title: '使用方式',
+        title: AppL10n.t('usage'),
         subtitle: 'SYSTEM / USAGE',
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -201,6 +210,14 @@ class UsageSettingsPage extends StatelessWidget {
             _cardBox(
               child: Column(
                 children: [
+                  _switchRow(
+                    Icons.volume_up_outlined,
+                    AppL10n.t('volume_paging'),
+                    AppL10n.t('volume_paging_sub'),
+                    s.volumeKeyPaging,
+                    (v) => s.update(() => s.volumeKeyPaging = v),
+                  ),
+                  const Divider(height: 1),
                   _switchRow(Icons.stay_current_portrait, '強制豎屏', '僅本 App 固定豎屏，關閉後跟隨系統', s.forcePortrait, (v) => s.update(() => s.forcePortrait = v)),
                   const Divider(height: 1),
                   _switchRow(Icons.menu_book_outlined, '點書直接閱讀', '從上次位置繼續閱讀', s.tapToReadDirectly, (v) => s.update(() => s.tapToReadDirectly = v)),
@@ -256,7 +273,7 @@ class AppearanceSettingsPage extends StatelessWidget {
     return ListenableBuilder(
       listenable: s,
       builder: (_, __) => _ArchiveScaffold(
-        title: '閱讀與外觀',
+        title: AppL10n.t('appearance'),
         subtitle: 'SYSTEM / READING',
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -333,7 +350,7 @@ class PerformanceSettingsPage extends StatelessWidget {
     return ListenableBuilder(
       listenable: s,
       builder: (_, __) => _ArchiveScaffold(
-        title: '性能與動效',
+        title: AppL10n.t('performance'),
         subtitle: 'SYSTEM / EFFECTS',
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -470,7 +487,7 @@ class StorageSettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = AppSettings.instance;
     return _ArchiveScaffold(
-      title: '數據與存儲',
+      title: AppL10n.t('storage'),
       subtitle: 'SYSTEM / STORAGE',
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -479,7 +496,7 @@ class StorageSettingsPage extends StatelessWidget {
           _cardBox(
             child: ListTile(
               leading: const Icon(Icons.history, color: Color(0xFF1F1F1F)),
-              title: const Text('閱讀歷史', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: Text(AppL10n.t('history'), style: const TextStyle(fontWeight: FontWeight.bold)),
               trailing: const Icon(Icons.chevron_right, color: Colors.black38),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingHistoryPage())),
             ),
@@ -497,17 +514,72 @@ class StorageSettingsPage extends StatelessWidget {
           _cardBox(
             child: ListTile(
               leading: const Icon(Icons.backup_outlined, color: Color(0xFF1F1F1F)),
-              title: const Text('備份與恢復', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: Text(AppL10n.t('backup_restore'), style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: const Text('匯出 JSON 到剪貼簿，或從剪貼簿恢復', style: TextStyle(fontSize: 12)),
               trailing: const Icon(Icons.chevron_right, color: Colors.black38),
-              onTap: () async {
-                final jsonStr = await s.exportBackupJson();
-                await Clipboard.setData(ClipboardData(text: jsonStr));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已將書架與閱讀歷史備份複製到剪貼簿')),
-                  );
-                }
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: const Color(0xFFF7F6F2),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  builder: (ctx) => SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.upload_outlined),
+                          title: const Text('匯出備份到剪貼簿'),
+                          subtitle: const Text('包含所有設定與閱讀歷史'),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            final jsonStr = await s.exportBackupJson();
+                            await Clipboard.setData(ClipboardData(text: jsonStr));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('已將設定與閱讀歷史備份複製到剪貼簿')),
+                              );
+                            }
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.download_outlined),
+                          title: const Text('從剪貼簿還原備份'),
+                          subtitle: const Text('覆蓋目前的設定與閱讀歷史'),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            final clip = await Clipboard.getData(Clipboard.kTextPlain);
+                            final text = clip?.text?.trim() ?? '';
+                            if (text.isEmpty) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('剪貼簿沒有內容')),
+                                );
+                              }
+                              return;
+                            }
+                            try {
+                              await s.importBackupJson(text);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('備份還原成功')),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('還原失敗：$e')),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                );
               },
             ),
           ),
@@ -627,7 +699,7 @@ class _ReadingHistoryPageState extends State<ReadingHistoryPage> {
   @override
   Widget build(BuildContext context) {
     return _ArchiveScaffold(
-      title: '閱讀歷史',
+      title: AppL10n.t('history'),
       subtitle: 'ARCHIVE / READING LOG',
       trailing: IconButton(
         icon: const Icon(Icons.delete_outline, color: Color(0xFF1F1F1F)),
