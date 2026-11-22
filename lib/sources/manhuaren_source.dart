@@ -25,6 +25,8 @@ class ManhuarenSource extends ComicSource {
       headers: {
         'User-Agent': _ua,
         'Referer': '$baseUrl/manhua-list/',
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
       },
     ),
@@ -56,12 +58,11 @@ class ManhuarenSource extends ComicSource {
             'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
       };
 
-  /// Fetches comics from https://www.manhuaren.com/manhua-list/
   @override
   Future<List<ComicItem>> getPopular({int page = 1}) async {
     final path = page <= 1 ? '/manhua-list/' : '/manhua-list-p$page/';
     final res = await _dio.get(path);
-    return _parseComicList(res.data.toString());
+    return _parseComicList(res.data.toString(), sourcePath: path);
   }
 
   @override
@@ -73,22 +74,31 @@ class ManhuarenSource extends ComicSource {
         'page': page,
       },
     );
-    return _parseComicList(res.data.toString());
+    return _parseComicList(res.data.toString(), sourcePath: '/search');
   }
 
-  List<ComicItem> _parseComicList(String htmlStr) {
+  List<ComicItem> _parseComicList(
+    String htmlStr, {
+    required String sourcePath,
+  }) {
+    if (htmlStr.trim().isEmpty) {
+      throw Exception('Manhuaren ($sourcePath) 回傳空白內容');
+    }
+
     final doc = html_parser.parse(htmlStr);
     final results = <ComicItem>[];
     final seenUrls = <String>{};
 
     final cards = doc.querySelectorAll(
-      '.mh-list li, .manga-list li, .book-list li, .list-con li',
+      '.mh-list li, .manga-list li, .book-list li, .list-con li, .mh-item, li, a[href]',
     );
 
     for (final card in cards) {
-      final anchor = card.querySelector('a[href]');
+      final anchor = card.localName == 'a' ? card : card.querySelector('a[href]');
       final href = anchor?.attributes['href']?.trim() ?? '';
-      if (href.isEmpty) continue;
+      if (href.isEmpty || href.contains('javascript:')) continue;
+      if (href.contains('/manhua-list') || href.contains('/search')) continue;
+      if (!RegExp(r'/(?:manhua-[^/]+|\d+)/?$').hasMatch(href)) continue;
 
       final fullUrl = _toFullUrl(href);
       if (!seenUrls.add(fullUrl)) continue;
@@ -98,22 +108,26 @@ class ManhuarenSource extends ComicSource {
           img?.attributes['src'] ??
           _extractCssUrl(
             card.querySelector('[style*="background"]')?.attributes['style'] ??
+                card.attributes['style'] ??
                 '',
           );
 
       final title = (img?.attributes['alt'] ??
               anchor?.attributes['title'] ??
-              card.querySelector('.title, .mh-title, h3, h4, a')?.text ??
-              '未命名')
+              card
+                  .querySelector('.title, .mh-title, h3, h4, p.ell, a')
+                  ?.text ??
+              anchor?.text ??
+              '')
           .trim();
+
+      if (title.isEmpty || title.length > 80) continue;
 
       final latest = (card
                   .querySelector('.chapter, .update, .status, p.ell')
                   ?.text ??
               '')
           .trim();
-
-      if (title.isEmpty) continue;
 
       results.add(
         ComicItem(
@@ -123,6 +137,15 @@ class ManhuarenSource extends ComicSource {
           cover: rawCover.isEmpty ? '' : _toFullUrl(rawCover),
           latestChapter: latest,
         ),
+      );
+    }
+
+    if (results.isEmpty) {
+      final snippet = htmlStr
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .substring(0, htmlStr.length > 140 ? 140 : htmlStr.length);
+      throw Exception(
+        'Manhuaren ($sourcePath) 未解析出漫畫項目，頁面片段：$snippet',
       );
     }
 
@@ -144,7 +167,8 @@ class ManhuarenSource extends ComicSource {
     final img = doc.querySelector(
       '.detail-main-cover img, .book-cover img, .cover img, img',
     );
-    final rawCover = img?.attributes['data-src'] ?? img?.attributes['src'] ?? '';
+    final rawCover =
+        img?.attributes['data-src'] ?? img?.attributes['src'] ?? '';
 
     final author = (doc
                 .querySelector(
@@ -211,7 +235,6 @@ class ManhuarenSource extends ComicSource {
     final htmlStr = res.data.toString();
     final doc = html_parser.parse(htmlStr);
 
-    // 1. Direct image elements when present in HTML
     final directUrls = doc
         .querySelectorAll('#cp_img img, #mangaFile, .viewer img, img[data-src]')
         .map((e) => e.attributes['data-src'] ?? e.attributes['src'] ?? '')
@@ -223,7 +246,6 @@ class ManhuarenSource extends ComicSource {
       return directUrls.toSet().toList();
     }
 
-    // 2. Extract image URLs from inline script arrays/variables if present
     final arrayMatch = RegExp(
       r'''(?:var\s+)?(?:picList|chapterImages|imageList|pvalue|files)\s*=\s*\[([^\]]+)\]''',
       caseSensitive: false,
