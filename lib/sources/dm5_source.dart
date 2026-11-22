@@ -32,8 +32,9 @@ class Dm5Source extends ComicSource {
 
   @override
   Map<String, String> getImageHeaders(String refererUrl) => {
-        'Referer': refererUrl.isNotEmpty ? refererUrl : baseUrl,
+        'Referer': 'https://www.dm5.com/',
         'User-Agent': _ua,
+        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
       };
 
   @override
@@ -63,7 +64,9 @@ class Dm5Source extends ComicSource {
 
       final coverStyle = el.querySelector('.mh-cover')?.attributes['style'] ?? '';
       final coverMatch = RegExp(r'url\(([^)]+)\)').firstMatch(coverStyle);
-      final cover = coverMatch?.group(1)?.replaceAll(RegExp(r'["\x27]'), '') ?? '';
+      final cover = _normalizeUrl(
+        coverMatch?.group(1)?.replaceAll(RegExp(r'["\x27]'), '') ?? '',
+      );
       final latest = el.querySelector('.chapter a')?.text.trim() ?? '';
 
       results.add(
@@ -85,7 +88,9 @@ class Dm5Source extends ComicSource {
     final doc = html_parser.parse(res.data.toString());
 
     final title = doc.querySelector('.banner_detail_form .info .title')?.text.trim();
-    final cover = doc.querySelector('.banner_detail_form .cover img')?.attributes['src'];
+    final cover = _normalizeUrl(
+      doc.querySelector('.banner_detail_form .cover img')?.attributes['src'] ?? '',
+    );
     final author = doc.querySelector('.banner_detail_form .info .subtitle')?.text.trim() ?? '';
     final desc = doc.querySelector('.banner_detail_form .content')?.text.trim() ?? '暫無簡介';
 
@@ -102,7 +107,7 @@ class Dm5Source extends ComicSource {
         sourceId: id,
         title: (title != null && title.isNotEmpty) ? title : item.title,
         url: item.url,
-        cover: (cover != null && cover.isNotEmpty) ? cover : item.cover,
+        cover: cover.isNotEmpty ? cover : item.cover,
         latestChapter: item.latestChapter,
       ),
       author: author,
@@ -119,7 +124,7 @@ class Dm5Source extends ComicSource {
     final doc = html_parser.parse(htmlStr);
     final directImgs = doc
         .querySelectorAll('#barChapter img')
-        .map((e) => e.attributes['data-src'] ?? e.attributes['src'] ?? '')
+        .map((e) => _normalizeUrl(e.attributes['data-src'] ?? e.attributes['src'] ?? ''))
         .where((src) => src.isNotEmpty)
         .toList();
     if (directImgs.isNotEmpty) return directImgs;
@@ -169,6 +174,18 @@ class Dm5Source extends ComicSource {
     return imageUrls;
   }
 
+  String _normalizeUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('//')) {
+      return 'https:$trimmed';
+    }
+    if (trimmed.startsWith('http://')) {
+      return trimmed.replaceFirst('http://', 'https://');
+    }
+    return trimmed;
+  }
+
   String _unpackJs(String packed) {
     final match = RegExp(
       r"\}\('(.*)',\s*(\d+),\s*(\d+),\s*'([^']*)'\.split\('\|'\)",
@@ -207,15 +224,16 @@ class Dm5Source extends ComicSource {
   }
 
   List<String> _extractImageUrlsFromUnpackedJs(String js) {
-    final pix = RegExp(r'var\s+pix\s*=\s*"([^"]+)"').firstMatch(js)?.group(1) ?? '';
+    final pix = RegExp(r'''var\s+pix\s*=\s*["']([^"']+)["']''').firstMatch(js)?.group(1) ?? '';
     final pvalueRaw = RegExp(r'var\s+pvalue\s*=\s*\[([^\]]+)\]').firstMatch(js)?.group(1) ?? '';
-    final query = RegExp(r"\+['\x22](\?cid=[^'\x22]+)['\x22]").firstMatch(js)?.group(1) ?? '';
+    final query = RegExp(r'''\+["'](\?cid=[^"']+)["']''').firstMatch(js)?.group(1) ?? '';
 
     if (pix.isEmpty || pvalueRaw.isEmpty) return [];
 
-    return RegExp(r'"([^"]+)"')
+    return RegExp(r'''["']([^"']+)["']''')
         .allMatches(pvalueRaw)
-        .map((m) => '$pix${m.group(1)}$query')
+        .map((m) => _normalizeUrl('$pix${m.group(1)}$query'))
+        .where((u) => u.isNotEmpty)
         .toList();
   }
 }
