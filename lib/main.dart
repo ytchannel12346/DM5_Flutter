@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'models/comic.dart';
 import 'pages/detail_page.dart';
 import 'pages/settings_pages.dart';
+import 'services/app_l10n.dart';
 import 'services/app_settings.dart';
 import 'sources/comic_source.dart';
 
@@ -289,28 +290,38 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: PaperGridBackground(
-        child: SafeArea(
-          bottom: false,
-          child: IndexedStack(
-            index: _tabIndex,
-            children: [
-              _buildDiscoverTab(),
-              _buildBookshelfTab(),
-              _buildLocalTab(),
-              _buildProfileTab(),
-            ],
+    return ListenableBuilder(
+      listenable: AppSettings.instance,
+      builder: (context, _) {
+        final s = AppSettings.instance;
+        final safeIndex = s.readerOnlyMode
+            ? (_tabIndex < 2 ? 2 : _tabIndex)
+            : _tabIndex.clamp(0, 3);
+
+        return Scaffold(
+          extendBody: true,
+          body: PaperGridBackground(
+            child: SafeArea(
+              bottom: false,
+              child: IndexedStack(
+                index: safeIndex,
+                children: [
+                  _buildDiscoverTab(),
+                  _buildBookshelfTab(),
+                  _buildLocalTab(),
+                  _buildProfileTab(),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-      bottomNavigationBar: _buildFloatingCapsuleNav(),
+          bottomNavigationBar: _buildFloatingCapsuleNav(safeIndex),
+        );
+      },
     );
   }
 
   /// 底部懸浮毛玻璃膠囊導覽列（平板自動置中限寬）
-  Widget _buildFloatingCapsuleNav() {
+  Widget _buildFloatingCapsuleNav(int activeTab) {
     final settings = AppSettings.instance;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
@@ -343,10 +354,12 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _navItem(Icons.explore_outlined, '發現', 0),
-                    _navItem(Icons.library_books_outlined, '書架', 1),
-                    _navItem(Icons.folder_outlined, '本地', 2),
-                    _navItem(Icons.person_outline_rounded, '我的', 3),
+                    if (!settings.readerOnlyMode && !settings.offlineMode)
+                      _navItem(Icons.explore_outlined, AppL10n.t('discover'), 0, activeTab),
+                    if (!settings.readerOnlyMode)
+                      _navItem(Icons.library_books_outlined, AppL10n.t('bookshelf'), 1, activeTab),
+                    _navItem(Icons.folder_outlined, AppL10n.t('local'), 2, activeTab),
+                    _navItem(Icons.person_outline_rounded, AppL10n.t('mine'), 3, activeTab),
                   ],
                 ),
               ),
@@ -357,8 +370,8 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
     );
   }
 
-  Widget _navItem(IconData icon, String label, int index) {
-    final selected = _tabIndex == index;
+  Widget _navItem(IconData icon, String label, int index, int activeTab) {
+    final selected = activeTab == index;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _tabIndex = index),
@@ -451,7 +464,7 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
             ],
           ),
           const SizedBox(height: 20),
-          _sectionHeader('COLLECTION / REGION', '發現'),
+          _sectionHeader('COLLECTION / REGION', AppL10n.t('discover')),
           const SizedBox(height: 12),
           _filterBar(
             '最近更新',
@@ -513,18 +526,18 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
       children: [
         Row(
           children: [
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '書架',
-                  style: TextStyle(
+                  AppL10n.t('bookshelf'),
+                  style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF1F1F1F),
                   ),
                 ),
-                Text(
+                const Text(
                   '02 / PERSONAL ARCHIVE',
                   style: TextStyle(
                     fontSize: 10,
@@ -579,9 +592,9 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
       children: [
-        const Text(
-          '本地',
-          style: TextStyle(
+        Text(
+          AppL10n.t('local'),
+          style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w800,
             color: Color(0xFF1F1F1F),
@@ -629,9 +642,9 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
       children: [
-        const Text(
-          '我的',
-          style: TextStyle(
+        Text(
+          AppL10n.t('mine'),
+          style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w800,
             color: Color(0xFF1F1F1F),
@@ -655,6 +668,15 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
           onTap: _showSourcePicker,
         ),
         _profileCard(
+          icon: Icons.history_rounded,
+          title: AppL10n.t('history'),
+          subtitle: '查看與續讀最近的漫畫章節',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ReadingHistoryPage()),
+          ),
+        ),
+        _profileCard(
           icon: Icons.bar_chart_rounded,
           title: '統計',
           subtitle: '閱讀記錄、藏書與指尖落點',
@@ -674,7 +696,7 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
         ),
         _profileCard(
           icon: Icons.settings_outlined,
-          title: '設置',
+          title: AppL10n.t('settings'),
           subtitle: '閱讀、外觀、性能與本地數據',
           onTap: () => Navigator.push(
             context,
