@@ -17,10 +17,6 @@ class Dm5Source extends ComicSource {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
-  static const String _mobileUa =
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 '
-      '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
-
   late final Dio _dio = Dio(
     BaseOptions(
       baseUrl: baseUrl,
@@ -28,65 +24,87 @@ class Dm5Source extends ComicSource {
       receiveTimeout: const Duration(seconds: 15),
       headers: {
         'User-Agent': _ua,
+        'Referer': '$baseUrl/',
         'Cookie': 'isAdult=1',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
       },
     ),
   );
 
-  String _toFullUrl(String url) {
+  String _toFullUrl(String url, {String? preferredOrigin}) {
     final trimmed = url.trim();
-    if (trimmed.isEmpty) return '$baseUrl/';
-    if (trimmed.startsWith('http')) return trimmed;
-    return '$baseUrl${trimmed.startsWith('/') ? '' : '/'}$trimmed';
+    final origin = preferredOrigin ?? baseUrl;
+    if (trimmed.isEmpty) return '$origin/';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('//')) {
+      return 'https:$trimmed';
+    }
+    return '$origin${trimmed.startsWith('/') ? '' : '/'}$trimmed';
   }
 
   @override
   Map<String, String> getImageHeaders(String refererUrl) => {
-        'Referer': _toFullUrl(refererUrl),
-        'User-Agent': _mobileUa,
-        'Cookie': 'isAdult=1',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Referer': 'https://www.dm5.com/',
+        'User-Agent': _ua,
+        'Accept':
+            'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
       };
 
   @override
   Future<List<ComicItem>> getPopular({int page = 1}) async {
-    final res = await _dio.get('/manhua-list-p$page/');
-    return _parseComicList(res.data.toString());
+    final path = page <= 1 ? '/manhua-list/' : '/manhua-list-p$page/';
+    final res = await _dio.get(path);
+    return _parseList(res.data.toString());
   }
 
   @override
   Future<List<ComicItem>> search(String keyword, {int page = 1}) async {
     final res = await _dio.get(
       '/search',
-      queryParameters: {'title': keyword, 'language': 1, 'page': page},
+      queryParameters: {
+        'title': keyword.trim(),
+        'language': 1,
+        'page': page,
+      },
     );
-    return _parseComicList(res.data.toString());
+    return _parseList(res.data.toString());
   }
 
-  List<ComicItem> _parseComicList(String htmlStr) {
+  List<ComicItem> _parseList(String htmlStr) {
     final doc = html_parser.parse(htmlStr);
-    final items = doc.querySelectorAll('.mh-list .mh-item');
     final results = <ComicItem>[];
+    final seenUrls = <String>{};
 
-    for (final el in items) {
-      final link = el.querySelector('.title a');
-      final href = link?.attributes['href'] ?? '';
-      if (href.isEmpty) continue;
+    for (final card in doc.querySelectorAll('.mh-list li, .mh-item')) {
+      final anchor = card.querySelector('.mh-item-detali h2.title a, h2.title a, a[href]');
+      final href = anchor?.attributes['href']?.trim() ?? '';
+      if (href.isEmpty || href.startsWith('javascript:')) continue;
 
-      final coverStyle = el.querySelector('.mh-cover')?.attributes['style'] ?? '';
+      final fullUrl = _toFullUrl(href);
+      if (!seenUrls.add(fullUrl)) continue;
+
+      final coverStyle =
+          card.querySelector('.mh-cover')?.attributes['style'] ?? '';
       final coverMatch = RegExp(r'url\(([^)]+)\)').firstMatch(coverStyle);
-      final cover = _normalizeUrl(
-        coverMatch?.group(1)?.replaceAll(RegExp(r'["\x27]'), '') ?? '',
-      );
-      final latest = el.querySelector('.chapter a')?.text.trim() ?? '';
+      final rawCover = coverMatch != null
+          ? coverMatch.group(1)!.replaceAll(RegExp(r'''["']'''), '').trim()
+          : (card.querySelector('img')?.attributes['src'] ?? '');
+
+      final title = (anchor?.attributes['title'] ?? anchor?.text ?? '').trim();
+      if (title.isEmpty) continue;
+
+      final latest = (card.querySelector('.chapter a, .chapter')?.text ?? '').trim();
 
       results.add(
         ComicItem(
           sourceId: id,
-          title: link?.text.trim() ?? '未命名',
-          url: href.startsWith('http') ? href : '$baseUrl$href',
-          cover: cover,
+          title: title,
+          url: fullUrl,
+          cover: rawCover.isEmpty ? '' : _toFullUrl(rawCover),
           latestChapter: latest,
         ),
       );
@@ -96,75 +114,92 @@ class Dm5Source extends ComicSource {
 
   @override
   Future<ComicDetail> getDetail(ComicItem item) async {
-    final res = await _dio.get(item.url);
+    final fullUrl = _toFullUrl(item.url);
+    final res = await _dio.get(fullUrl);
     final doc = html_parser.parse(res.data.toString());
 
-    final title = doc.querySelector('.banner_detail_form .info .title')?.text.trim();
-    final cover = _normalizeUrl(
-      doc.querySelector('.banner_detail_form .cover img')?.attributes['src'] ?? '',
-    );
-    final author = doc.querySelector('.banner_detail_form .info .subtitle')?.text.trim() ?? '';
-    final desc = doc.querySelector('.banner_detail_form .content')?.text.trim() ?? '暫無簡介';
+    final title =
+        (doc.querySelector('.banner_detail_form .info .title')?.text ?? '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+    final rawCover =
+        doc.querySelector('.banner_detail_form .cover img')?.attributes['src'] ??
+            '';
+    final author =
+        (doc.querySelector('.banner_detail_form .info .subtitle')?.text ?? '')
+            .trim();
+    final desc =
+        (doc.querySelector('.banner_detail_form .info .content')?.text ?? '暫無簡介')
+            .trim();
 
-    final chapters = doc.querySelectorAll('#chapterlistload ul li a').map((a) {
-      final href = a.attributes['href'] ?? '';
-      return ComicChapter(
-        title: a.text.trim(),
-        url: href.startsWith('http') ? href : '$baseUrl$href',
-      );
-    }).where((c) => c.url.isNotEmpty).toList();
+    final chapters = doc
+        .querySelectorAll('#chapterlistload ul li a')
+        .map((a) {
+          final href = a.attributes['href'] ?? '';
+          final chTitle = (a.attributes['title'] ?? a.text)
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim();
+          return ComicChapter(
+            title: chTitle.isNotEmpty ? chTitle : a.text.trim(),
+            url: _toFullUrl(href),
+          );
+        })
+        .where((c) => c.url.isNotEmpty && c.title.isNotEmpty)
+        .toList();
 
     return ComicDetail(
       item: ComicItem(
         sourceId: id,
-        title: (title != null && title.isNotEmpty) ? title : item.title,
-        url: item.url,
-        cover: cover.isNotEmpty ? cover : item.cover,
+        title: title.isNotEmpty ? title : item.title,
+        url: fullUrl,
+        cover: rawCover.isNotEmpty ? _toFullUrl(rawCover) : item.cover,
         latestChapter: item.latestChapter,
       ),
       author: author,
-      description: desc,
+      description: desc.isEmpty ? '暫無簡介' : desc,
       chapters: chapters,
     );
   }
 
   @override
   Future<List<String>> getChapterImages(String chapterUrl) async {
-    final fullChapterUrl = _toFullUrl(chapterUrl);
-    final res = await _dio.get(fullChapterUrl);
+    final fullUrl = _toFullUrl(chapterUrl);
+    final res = await _dio.get(
+      fullUrl,
+      options: Options(headers: {'Referer': '$baseUrl/'}),
+    );
     final htmlStr = res.data.toString();
 
-    final doc = html_parser.parse(htmlStr);
-    final directImgs = doc
-        .querySelectorAll('#barChapter img')
-        .map((e) => _normalizeUrl(e.attributes['data-src'] ?? e.attributes['src'] ?? ''))
-        .where((src) => src.isNotEmpty)
-        .toList();
-    if (directImgs.isNotEmpty) return directImgs;
+    final cid = RegExp(r'DM5_CID\s*=\s*(\d+)').firstMatch(htmlStr)?.group(1);
+    final mid = RegExp(r'DM5_MID\s*=\s*(\d+)').firstMatch(htmlStr)?.group(1) ?? '';
+    final count = int.tryParse(
+          RegExp(r'DM5_IMAGE_COUNT\s*=\s*(\d+)').firstMatch(htmlStr)?.group(1) ??
+              '0',
+        ) ??
+        0;
+    final sign =
+        RegExp(r'''DM5_VIEWSIGN\s*=\s*["']([^"']+)["']''').firstMatch(htmlStr)?.group(1) ??
+            '';
+    final dt = RegExp(r'''DM5_VIEWSIGN_DT\s*=\s*["']([^"']+)["']''')
+            .firstMatch(htmlStr)
+            ?.group(1) ??
+        '';
 
-    String extractVar(String name) {
-      final m = RegExp('var\\s+$name\\s*=\\s*["\']?([^;"\']+)["\']?;')
-          .firstMatch(htmlStr);
-      return m?.group(1)?.trim() ?? '';
+    if (cid == null || count == 0) {
+      throw Exception('無法解析 DM5 章節參數');
     }
 
-    final cid = extractVar('DM5_CID');
-    final mid = extractVar('DM5_MID');
-    final dt = extractVar('DM5_VIEWSIGN_DT');
-    final sign = extractVar('DM5_VIEWSIGN');
-    final key = extractVar('dm5_key');
-    final totalPages = int.tryParse(extractVar('DM5_IMAGE_COUNT')) ?? 0;
+    final images = <String>[];
+    final seen = <String>{};
 
-    final imageUrls = <String>[];
-    int page = 1;
-
-    while (page <= totalPages) {
+    for (var page = 1; page <= count; page++) {
+      if (images.length >= count) break;
       final funRes = await _dio.get(
-        '/m$cid/chapterfun.ashx',
+        '$baseUrl/m$cid/chapterfun.ashx',
         queryParameters: {
           'cid': cid,
           'page': page,
-          'key': key,
+          'key': '',
           'language': 1,
           'gtk': 6,
           '_cid': cid,
@@ -174,35 +209,53 @@ class Dm5Source extends ComicSource {
         },
         options: Options(
           headers: {
-            'Referer': fullChapterUrl,
+            'Referer': fullUrl,
             'X-Requested-With': 'XMLHttpRequest',
           },
         ),
       );
 
       final unpacked = _unpackJs(funRes.data.toString());
-      final urls = _extractImageUrlsFromUnpackedJs(unpacked);
-
-      if (urls.isEmpty) break;
+      final urls = _extractUrls(unpacked);
       for (final u in urls) {
-        if (!imageUrls.contains(u)) imageUrls.add(u);
+        if (seen.add(u)) {
+          images.add(u);
+        }
       }
-      page += urls.length;
-      if (page <= totalPages) {
-        await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (urls.length > 1) {
+        page += urls.length - 1;
       }
     }
 
-    return imageUrls;
+    if (images.isEmpty) {
+      throw Exception('DM5 未回傳章節圖片');
+    }
+    return images;
   }
 
-  String _normalizeUrl(String url) {
-    final trimmed = url.trim();
-    if (trimmed.isEmpty) return '';
-    if (trimmed.startsWith('//')) {
-      return 'https:$trimmed';
-    }
-    return trimmed;
+  List<String> _extractUrls(String js) {
+    final pix =
+        RegExp(r'''var\s+pix\s*=\s*["']([^"']+)["']''').firstMatch(js)?.group(1) ??
+            '';
+    final pvalueMatch =
+        RegExp(r'''var\s+pvalue\s*=\s*\[([^\]]+)\]''').firstMatch(js);
+    if (pvalueMatch == null) return [];
+
+    final query =
+        RegExp(r'''var\s+query\s*=\s*["']([^"']*)["']''').firstMatch(js)?.group(1) ??
+            '';
+
+    return RegExp(r'''["']([^"']+)["']''')
+        .allMatches(pvalueMatch.group(1)!)
+        .map((m) {
+          final file = m.group(1)!;
+          if (file.startsWith('http://') || file.startsWith('https://')) {
+            return '$file$query';
+          }
+          return '$pix$file$query';
+        })
+        .where((u) => u.startsWith('http'))
+        .toList();
   }
 
   String _unpackJs(String packed) {
@@ -240,19 +293,5 @@ class Dm5Source extends ComicSource {
       RegExp(r'\b\w+\b'),
       (m) => dict[m.group(0)] ?? m.group(0)!,
     );
-  }
-
-  List<String> _extractImageUrlsFromUnpackedJs(String js) {
-    final pix = RegExp(r'''var\s+pix\s*=\s*["']([^"']+)["']''').firstMatch(js)?.group(1) ?? '';
-    final pvalueRaw = RegExp(r'var\s+pvalue\s*=\s*\[([^\]]+)\]').firstMatch(js)?.group(1) ?? '';
-    final query = RegExp(r'''\+["'](\?cid=[^"']+)["']''').firstMatch(js)?.group(1) ?? '';
-
-    if (pix.isEmpty || pvalueRaw.isEmpty) return [];
-
-    return RegExp(r'''["']([^"']+)["']''')
-        .allMatches(pvalueRaw)
-        .map((m) => _normalizeUrl('$pix${m.group(1)}$query'))
-        .where((u) => u.isNotEmpty)
-        .toList();
   }
 }
