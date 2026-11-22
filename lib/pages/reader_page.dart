@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../models/comic.dart';
+import '../services/history_service.dart';
 import '../sources/comic_source.dart';
 
 enum ReadMode { horizontal, verticalPage, webtoon }
@@ -99,6 +101,21 @@ class _ReaderPageState extends State<ReaderPage> {
     super.dispose();
   }
 
+  Future<void> _recordHistory() async {
+    await HistoryService.saveHistory(
+      ReadHistoryItem(
+        sourceId: widget.source.id,
+        comicTitle: _currentChapter.title,
+        comicUrl: _currentChapter.url,
+        cover: _images.isNotEmpty ? _images.first : '',
+        chapterTitle: _currentChapter.title,
+        chapterUrl: _currentChapter.url,
+        pageIndex: _currentPage,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+  }
+
   Future<void> _loadChapter() async {
     if (_isLoadingChapter) return;
     _isLoadingChapter = true;
@@ -118,6 +135,7 @@ class _ReaderPageState extends State<ReaderPage> {
           _images = urls;
           _loading = false;
         });
+        _recordHistory();
       }
     } catch (e) {
       if (mounted) {
@@ -135,6 +153,7 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_images.isEmpty) return;
     final target = pageIndex.clamp(0, _images.length - 1);
     setState(() => _currentPage = target);
+    _recordHistory();
 
     if (_readMode == ReadMode.webtoon) {
       if (_scrollController.hasClients) {
@@ -505,7 +524,6 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildImageItem(String url) {
-Widget _buildImageItem(String url) {
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       return Image.file(
         File(url),
@@ -522,7 +540,10 @@ Widget _buildImageItem(String url) {
       );
     }
 
-    // Existing CachedNetworkImage code stays below...
+    final nonce = _retryNonce[url] ?? 0;
+    final effectiveUrl = nonce == 0
+        ? url
+        : '$url${url.contains('?') ? '&' : '?'}_r=$nonce';
 
     return CachedNetworkImage(
       key: ValueKey('$url#$nonce'),
@@ -614,8 +635,10 @@ Widget _buildImageItem(String url) {
       reverse: _readMode == ReadMode.horizontal &&
           _readDirection == ReadDirection.rtl,
       itemCount: pageCount,
-      onPageChanged: (idx) =>
-          setState(() => _currentPage = isDual ? idx * 2 : idx),
+      onPageChanged: (idx) {
+        setState(() => _currentPage = isDual ? idx * 2 : idx);
+        _recordHistory();
+      },
       itemBuilder: (_, i) {
         if (!isDual) {
           return InteractiveViewer(
