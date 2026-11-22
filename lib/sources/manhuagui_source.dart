@@ -247,7 +247,9 @@ class ManhuaguiSource extends ComicSource {
     final doc = html_parser.parse(htmlStr);
 
     final direct = doc
-        .querySelectorAll('#mangaFile, #mangaBox img, .manga-page img, img[data-src]')
+        .querySelectorAll(
+          '#mangaFile, #mangaBox img, .manga-page img, img[data-src]',
+        )
         .map((e) => e.attributes['data-src'] ?? e.attributes['src'] ?? '')
         .map((u) => u.trim())
         .where((u) => u.isNotEmpty && !u.startsWith('data:'))
@@ -255,32 +257,213 @@ class ManhuaguiSource extends ComicSource {
         .toList();
     if (direct.isNotEmpty) return direct;
 
-    final filesMatch =
-        RegExp(r'''["']?files["']?\s*:\s*\[([^\]]+)\]''').firstMatch(htmlStr);
-    final pathMatch =
-        RegExp(r'''["']?path["']?\s*:\s*["']([^"']+)["']''').firstMatch(htmlStr);
-
-    if (filesMatch != null) {
-      final host = pathMatch?.group(1) ?? 'https://i.hamreus.com';
-      final prefix = host.startsWith('http') ? host : 'https:$host';
-      final cleanPrefix =
-          prefix.endsWith('/') ? prefix.substring(0, prefix.length - 1) : prefix;
-
-      return RegExp(r'''["']([^"']+\.(?:jpg|jpeg|png|webp))["']''',
-              caseSensitive: false)
-          .allMatches(filesMatch.group(1)!)
-          .map((m) {
-            final file = m.group(1)!;
-            if (file.startsWith('http')) return file;
-            final cleanFile =
-                file.startsWith('/') ? file.substring(1) : file;
-            return '$cleanPrefix/$cleanFile';
-          })
-          .toList();
+    String scriptSource = htmlStr;
+    final lzMatch = RegExp(
+      r'''decompressFromBase64\s*\(\s*["']([^"']+)["']\s*\)''',
+    ).firstMatch(htmlStr);
+    if (lzMatch != null) {
+      final decompressed = _decompressFromBase64(lzMatch.group(1)!);
+      if (decompressed.isNotEmpty) {
+        scriptSource = '$htmlStr\n$decompressed';
+      }
     }
 
+    final unpacked = _unpackJs(scriptSource);
+    final combinedSource = '$scriptSource\n$unpacked';
+
+    final urls = _extractImageUrlsFromScript(combinedSource);
+    if (urls.isNotEmpty) return urls;
+
     throw Exception(
-      '無法解析 Manhuagui 章節圖片（可能需要 LZString 解壓縮腳本或驗證）',
+      '無法解析 Manhuagui 章節圖片（未找到 files/path 或 LZString 內容）',
     );
+  }
+
+  List<String> _extractImageUrlsFromScript(String source) {
+    final filesMatch =
+        RegExp(r'''["']?files["']?\s*:\s*\[([^\]]+)\]''').firstMatch(source);
+    if (filesMatch == null) return [];
+
+    final pathMatch =
+        RegExp(r'''["']?path["']?\s*:\s*["']([^"']+)["']''').firstMatch(source);
+    final host = pathMatch?.group(1)?.trim() ?? 'https://i.hamreus.com';
+    final prefix = host.startsWith('http')
+        ? host
+        : (host.startsWith('//') ? 'https:$host' : 'https://$host');
+    final cleanPrefix =
+        prefix.endsWith('/') ? prefix.substring(0, prefix.length - 1) : prefix;
+
+    final queryMatch = RegExp(
+      r'''["']?sl["']?\s*:\s*\{[^}]*["']?e["']?\s*:\s*(\d+)[^}]*["']?m["']?\s*:\s*["']([^"']+)["']''',
+    ).firstMatch(source);
+    final query = queryMatch != null
+        ? '?e=${queryMatch.group(1)}&m=${queryMatch.group(2)}'
+        : '';
+
+    return RegExp(
+      r'''["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)["']''',
+      caseSensitive: false,
+    )
+        .allMatches(filesMatch.group(1)!)
+        .map((m) {
+          final file = m.group(1)!;
+          if (file.startsWith('http://') || file.startsWith('https://')) {
+            return file;
+          }
+          if (file.startsWith('//')) return 'https:$file';
+          final cleanFile = file.startsWith('/') ? file.substring(1) : file;
+          return '$cleanPrefix/$cleanFile$query';
+        })
+        .where((u) => u.isNotEmpty)
+        .toList();
+  }
+
+  String _unpackJs(String packed) {
+    final match = RegExp(
+      r"\}\('(.*)',\s*(\d+),\s*(\d+),\s*'([^']*)'\.split\('\Vert{}'\)",
+      dotAll: true,
+    ).firstMatch(packed);
+    if (match == null) return '';
+
+    final payload = match.group(1)!;
+    final radix = int.parse(match.group(2)!);
+    final count = int.parse(match.group(3)!);
+    final symtab = match.group(4)!.split('|');
+
+    String encodeBase(int num) {
+      const chars =
+          '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      if (num == 0) return '0';
+      var result = '';
+      var n = num;
+      while (n > 0) {
+        result = chars[n % radix] + result;
+        n ~/= radix;
+      }
+      return result;
+    }
+
+    final dict = <String, String>{};
+    for (int i = count - 1; i >= 0; i--) {
+      final key = encodeBase(i);
+      dict[key] = (i < symtab.length && symtab[i].isNotEmpty) ? symtab[i] : key;
+    }
+
+    return payload.replaceAllMapped(
+      RegExp(r'\b\w+\b'),
+      (m) => dict[m.group(0)] ?? m.group(0)!,
+    );
+  }
+
+  static const String _keyStrBase64 =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+
+  String _decompressFromBase64(String input) {
+    if (input.isEmpty) return '';
+    return _decompress(input.length, 32, (index) {
+      final ch = input[index];
+      return _keyStrBase64.indexOf(ch);
+    });
+  }
+
+  String _decompress(
+    int length,
+    int resetValue,
+    int Function(int) getNextValue,
+  ) {
+    final dictionary = <int, String>{};
+    var enlargeIn = 4;
+    var dictSize = 4;
+    var numBits = 3;
+    var entry = '';
+    final result = StringBuffer();
+    var w = '';
+    var c = 0;
+
+    var currentVal = getNextValue(0);
+    var currentPos = resetValue;
+    var index = 1;
+
+    int readBits(int bits) {
+      var res = 0;
+      var power = 1;
+      for (var i = 0; i < bits; i++) {
+        final val = currentVal & currentPos;
+        currentPos >>= 1;
+        if (currentPos == 0) {
+          currentPos = resetValue;
+          currentVal = getNextValue(index++);
+        }
+        res |= (val > 0 ? 1 : 0) * power;
+        power <<= 1;
+      }
+      return res;
+    }
+
+    for (var i = 0; i < 3; i++) {
+      dictionary[i] = i.toString();
+    }
+
+    final bits = readBits(2);
+    switch (bits) {
+      case 0:
+        c = readBits(8);
+        w = String.fromCharCode(c);
+        break;
+      case 1:
+        c = readBits(16);
+        w = String.fromCharCode(c);
+        break;
+      case 2:
+        return '';
+    }
+
+    dictionary[3] = w;
+    result.write(w);
+
+    while (true) {
+      if (index > length) {
+        return '';
+      }
+      final cc = readBits(numBits);
+      var object = '';
+      if (cc == 0) {
+        c = readBits(8);
+        dictionary[dictSize++] = String.fromCharCode(c);
+        object = (dictSize - 1).toString();
+        enlargeIn--;
+      } else if (cc == 1) {
+        c = readBits(16);
+        dictionary[dictSize++] = String.fromCharCode(c);
+        object = (dictSize - 1).toString();
+        enlargeIn--;
+      } else if (cc == 2) {
+        return result.toString();
+      } else {
+        object = cc.toString();
+      }
+
+      if (enlargeIn == 0) {
+        enlargeIn = 1 << numBits;
+        numBits++;
+      }
+
+      final num = int.tryParse(object);
+      if (num != null && dictionary.containsKey(num)) {
+        entry = dictionary[num]!;
+      } else {
+        return '';
+      }
+
+      result.write(entry);
+      dictionary[dictSize++] = w + entry[0];
+      enlargeIn--;
+      w = entry;
+
+      if (enlargeIn == 0) {
+        enlargeIn = 1 << numBits;
+        numBits++;
+      }
+    }
   }
 }
