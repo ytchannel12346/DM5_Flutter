@@ -14,4 +14,4 @@ Android：直接覆蓋更新，不要先卸載舊版。<br>
 iOS：提供未簽名包，主應用程式與小元件皆需自行簽章。<br>
 
 # 支援源<br>
-dm5,local_comic,manhuagui,manhuaren,其他源以後支持
+DM5,Local_Comic,Manhuagui,Manhuaren,其他源以後支持
