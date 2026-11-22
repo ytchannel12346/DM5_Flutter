@@ -174,14 +174,11 @@ class Dm5Source extends ComicSource {
     return imageUrls;
   }
 
-  String _normalizeUrl(String url) {
+String _normalizeUrl(String url) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('//')) {
       return 'https:$trimmed';
-    }
-    if (trimmed.startsWith('http://')) {
-      return trimmed.replaceFirst('http://', 'https://');
     }
     return trimmed;
   }
