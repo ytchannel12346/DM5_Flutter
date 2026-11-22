@@ -6,16 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/comic.dart';
 import 'pages/detail_page.dart';
-import 'sources/comic_source.dart';
 import 'pages/settings_pages.dart';
 import 'services/app_settings.dart';
+import 'sources/comic_source.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppSettings.instance.load();
-  runApp(const ComicReaderApp());
-}
-void main() {
   runApp(const ComicReaderApp());
 }
 
@@ -24,19 +21,43 @@ class ComicReaderApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Comic Archive',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF7F6F2),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1F1F1F),
-          surface: const Color(0xFFF7F6F2),
-        ),
-        fontFamilyFallback: const ['PingFang TC', 'Noto Sans TC', 'sans-serif'],
-      ),
-      home: const ArchiveHomeShell(),
+    return ListenableBuilder(
+      listenable: AppSettings.instance,
+      builder: (context, _) {
+        final settings = AppSettings.instance;
+        return MaterialApp(
+          title: 'Comic Archive',
+          debugShowCheckedModeBanner: false,
+          themeMode: settings.themeMode,
+          theme: ThemeData(
+            useMaterial3: true,
+            scaffoldBackgroundColor: const Color(0xFFF7F6F2),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF1F1F1F),
+              surface: const Color(0xFFF7F6F2),
+            ),
+            fontFamilyFallback: const [
+              'PingFang TC',
+              'Noto Sans TC',
+              'sans-serif',
+            ],
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.dark,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF1F1F1F),
+              brightness: Brightness.dark,
+            ),
+            fontFamilyFallback: const [
+              'PingFang TC',
+              'Noto Sans TC',
+              'sans-serif',
+            ],
+          ),
+          home: const ArchiveHomeShell(),
+        );
+      },
     );
   }
 }
@@ -89,7 +110,7 @@ class ArchiveHomeShell extends StatefulWidget {
 }
 
 class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
-  int _tabIndex = 0; // 0:發現, 1:書架, 2:本地, 3:我的
+  late int _tabIndex = AppSettings.instance.startupTab.clamp(0, 3);
   List<ComicItem> _discoverList = [];
   List<ComicItem> _bookshelf = [];
   bool _loading = true;
@@ -155,7 +176,10 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFFF7F6F2),
-        title: const Text('搜尋漫畫', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          '搜尋漫畫',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -183,7 +207,9 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
             child: const Text('顯示熱門', style: TextStyle(color: Colors.black54)),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF1F1F1F)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF1F1F1F),
+            ),
             onPressed: () {
               Navigator.pop(ctx);
               setState(() => _tabIndex = 0);
@@ -235,8 +261,14 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
                   ),
                   child: ListTile(
                     leading: const Icon(Icons.public, color: Color(0xFF1F1F1F)),
-                    title: Text(src.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(src.baseUrl, style: const TextStyle(fontSize: 12)),
+                    title: Text(
+                      src.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      src.baseUrl,
+                      style: const TextStyle(fontSize: 12),
+                    ),
                     trailing: src.id == SourceManager.current.id
                         ? const Icon(Icons.check_circle, color: Color(0xFF1F1F1F))
                         : const Icon(Icons.chevron_right, color: Colors.black38),
@@ -279,6 +311,7 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
 
   /// 底部懸浮毛玻璃膠囊導覽列（平板自動置中限寬）
   Widget _buildFloatingCapsuleNav() {
+    final settings = AppSettings.instance;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
       child: Align(
@@ -289,11 +322,14 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(32),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              filter: ImageFilter.blur(
+                sigmaX: settings.glassBlur,
+                sigmaY: settings.glassBlur,
+              ),
               child: Container(
                 height: 64,
                 decoration: BoxDecoration(
-                  color: const Color.fromRGBO(255, 255, 255, 0.86),
+                  color: Color.fromRGBO(255, 255, 255, settings.glassOpacity),
                   borderRadius: BorderRadius.circular(32),
                   border: Border.all(color: const Color(0xFFE5E2DA)),
                   boxShadow: const [
@@ -379,7 +415,11 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
                   color: const Color(0xFF1F1F1F),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 20),
+                child: const Icon(
+                  Icons.menu_book_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Column(
@@ -413,12 +453,18 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
           const SizedBox(height: 20),
           _sectionHeader('COLLECTION / REGION', '發現'),
           const SizedBox(height: 12),
-          _filterBar('最近更新', '${_discoverList.length} 本', onTap: _showSourcePicker),
+          _filterBar(
+            '最近更新',
+            '${_discoverList.length} 本',
+            onTap: _showSourcePicker,
+          ),
           const SizedBox(height: 16),
           if (_loading)
             const SizedBox(
               height: 320,
-              child: Center(child: CircularProgressIndicator(color: Color(0xFF1F1F1F))),
+              child: Center(
+                child: CircularProgressIndicator(color: Color(0xFF1F1F1F)),
+              ),
             )
           else if (_error != null)
             SizedBox(
@@ -430,7 +476,9 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
                     Text(_error!, textAlign: TextAlign.center),
                     const SizedBox(height: 12),
                     FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFF1F1F1F)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF1F1F1F),
+                      ),
                       onPressed: () => _loadDiscover(),
                       child: const Text('重試'),
                     ),
@@ -442,7 +490,8 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
             if (carouselItems.isNotEmpty)
               BookSpineCarousel(
                 items: carouselItems,
-                activeIndex: _discoverActiveIdx.clamp(0, carouselItems.length - 1),
+                activeIndex:
+                    _discoverActiveIdx.clamp(0, carouselItems.length - 1),
                 onChanged: (i) => setState(() => _discoverActiveIdx = i),
                 onOpen: _openDetail,
               ),
@@ -504,7 +553,10 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE5E2DA)),
             ),
-            child: const Text('書架還是空的，去「發現」收藏幾本漫畫吧！', style: TextStyle(color: Colors.black54)),
+            child: const Text(
+              '書架還是空的，去「發現」收藏幾本漫畫吧！',
+              style: TextStyle(color: Colors.black54),
+            ),
           )
         else ...[
           BookSpineCarousel(
@@ -529,7 +581,11 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
       children: [
         const Text(
           '本地',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1F1F1F)),
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF1F1F1F),
+          ),
         ),
         const Text(
           '03 / LOCAL ARCHIVE',
@@ -552,7 +608,10 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
             children: [
               Icon(Icons.folder_zip_outlined, size: 40, color: Colors.black45),
               SizedBox(height: 12),
-              Text('暫無本地漫畫', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(
+                '暫無本地漫畫',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
               SizedBox(height: 6),
               Text(
                 '未來可在此匯入本地 CBZ / ZIP 漫畫壓縮檔',
@@ -572,7 +631,11 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
       children: [
         const Text(
           '我的',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1F1F1F)),
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF1F1F1F),
+          ),
         ),
         const Text(
           '04 / PERSONAL ARCHIVE',
@@ -587,20 +650,36 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
         _profileCard(
           icon: Icons.account_box_outlined,
           title: 'Comic Reader',
-          subtitle: '已收藏 ${_bookshelf.length} 本漫畫 · 書源：${SourceManager.current.name}',
-          onTap: _showSourcePicker,
-        ),
-        _profileCard(
-          icon: Icons.public,
-          title: '漫畫書源管理',
-          subtitle: '目前使用：${SourceManager.current.baseUrl}',
+          subtitle:
+              '已收藏 ${_bookshelf.length} 本漫畫 · 書源：${SourceManager.current.name}',
           onTap: _showSourcePicker,
         ),
         _profileCard(
           icon: Icons.bar_chart_rounded,
           title: '統計',
-          subtitle: '閱讀記錄、藏書與書籤',
-          onTap: () {},
+          subtitle: '閱讀記錄、藏書與指尖落點',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const StatsPage()),
+          ),
+        ),
+        _profileCard(
+          icon: Icons.bookmark_border_rounded,
+          title: '書籤',
+          subtitle: '${AppSettings.instance.bookmarksByBook.length} 本書的書籤與摘錄',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const BookmarksPage()),
+          ),
+        ),
+        _profileCard(
+          icon: Icons.settings_outlined,
+          title: '設置',
+          subtitle: '閱讀、外觀、性能與本地數據',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsHubPage()),
+          ),
         ),
         _profileCard(
           icon: Icons.info_outline_rounded,
@@ -608,24 +687,6 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
           subtitle:
               '版本 ${const String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0')} · DM5 Flutter Archive',
           onTap: () {},
-          _profileCard(
-       icon: Icons.bar_chart_rounded,
-       title: '統計',
-       subtitle: '閱讀記錄、藏書與指尖落點',
-       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsPage())),
-     ),
-     _profileCard(
-       icon: Icons.bookmark_border_rounded,
-       title: '書籤',
-       subtitle: '${AppSettings.instance.bookmarksByBook.length} 本書的書籤與摘錄',
-       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarksPage())),
-     ),
-     _profileCard(
-       icon: Icons.settings_outlined,
-       title: '設置',
-       subtitle: '閱讀、外觀、性能與本地數據',
-       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsHubPage())),
-     ),
         ),
       ],
     );
@@ -647,8 +708,14 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         leading: Icon(icon, color: const Color(0xFF1F1F1F), size: 26),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        subtitle: Text(subtitle, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(color: Colors.black54, fontSize: 12),
+        ),
         trailing: const Icon(Icons.chevron_right, color: Colors.black38),
         onTap: onTap,
       ),
@@ -719,11 +786,25 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.inventory_2_outlined, size: 17, color: Color(0xFF1F1F1F)),
+                  const Icon(
+                    Icons.inventory_2_outlined,
+                    size: 17,
+                    color: Color(0xFF1F1F1F),
+                  ),
                   const SizedBox(width: 8),
-                  Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
                   const Spacer(),
-                  const Icon(Icons.keyboard_arrow_down, size: 18, color: Colors.black54),
+                  const Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 18,
+                    color: Colors.black54,
+                  ),
                 ],
               ),
             ),
@@ -768,8 +849,10 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
                     httpHeaders: src.getImageHeaders(item.url),
                     width: double.infinity,
                     fit: BoxFit.cover,
-                    placeholder: (_, __) => const ColoredBox(color: Color(0xFFEFEDE7)),
-                    errorWidget: (_, __, ___) => const Icon(Icons.broken_image_outlined),
+                    placeholder: (_, __) =>
+                        const ColoredBox(color: Color(0xFFEFEDE7)),
+                    errorWidget: (_, __, ___) =>
+                        const Icon(Icons.broken_image_outlined),
                   ),
                 ),
               ),
@@ -843,7 +926,9 @@ class BookSpineCarousel extends StatelessWidget {
                   alignment: Alignment.center,
                   children: indices.map((i) {
                     final diff = i - activeIndex;
-                    if (diff.abs() > maxSideBooks) return const SizedBox.shrink();
+                    if (diff.abs() > maxSideBooks) {
+                      return const SizedBox.shrink();
+                    }
 
                     final isSelected = diff == 0;
                     final double dx = isSelected
@@ -851,8 +936,10 @@ class BookSpineCarousel extends StatelessWidget {
                         : (diff > 0
                             ? 78.0 + (diff - 1) * 32.0
                             : -78.0 + (diff + 1) * 32.0);
-                    final double dy = isSelected ? -14.0 : 12.0 + diff.abs() * 3.0;
-                    final double scale = isSelected ? 1.0 : (0.90 - diff.abs() * 0.03);
+                    final double dy =
+                        isSelected ? -14.0 : 12.0 + diff.abs() * 3.0;
+                    final double scale =
+                        isSelected ? 1.0 : (0.90 - diff.abs() * 0.03);
 
                     return AnimatedPositioned(
                       duration: const Duration(milliseconds: 280),
@@ -906,7 +993,11 @@ class BookSpineCarousel extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Icon(Icons.north_east_rounded, size: 20, color: Color(0xFF1F1F1F)),
+              const Icon(
+                Icons.north_east_rounded,
+                size: 20,
+                color: Color(0xFF1F1F1F),
+              ),
             ],
           ),
         ),
@@ -916,7 +1007,8 @@ class BookSpineCarousel extends StatelessWidget {
           children: [
             IconButton(
               icon: const Icon(Icons.chevron_left, size: 20),
-              onPressed: activeIndex > 0 ? () => onChanged(activeIndex - 1) : null,
+              onPressed:
+                  activeIndex > 0 ? () => onChanged(activeIndex - 1) : null,
             ),
             Text(
               '${(activeIndex + 1).toString().padLeft(2, '0')}  /  ${items.length.toString().padLeft(2, '0')}',
@@ -928,7 +1020,9 @@ class BookSpineCarousel extends StatelessWidget {
             ),
             IconButton(
               icon: const Icon(Icons.chevron_right, size: 20),
-              onPressed: activeIndex < items.length - 1 ? () => onChanged(activeIndex + 1) : null,
+              onPressed: activeIndex < items.length - 1
+                  ? () => onChanged(activeIndex + 1)
+                  : null,
             ),
           ],
         ),
@@ -964,7 +1058,11 @@ class BookSpineCarousel extends StatelessWidget {
             children: [
               Text(
                 numStr,
-                style: const TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.black54),
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontFamily: 'monospace',
+                  color: Colors.black54,
+                ),
               ),
               const SizedBox(height: 8),
               Expanded(
@@ -1025,8 +1123,10 @@ class BookSpineCarousel extends StatelessWidget {
                       httpHeaders: src.getImageHeaders(item.url),
                       width: double.infinity,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => const ColoredBox(color: Color(0xFFEFEDE7)),
-                      errorWidget: (_, __, ___) => const Icon(Icons.broken_image_outlined),
+                      placeholder: (_, __) =>
+                          const ColoredBox(color: Color(0xFFEFEDE7)),
+                      errorWidget: (_, __, ___) =>
+                          const Icon(Icons.broken_image_outlined),
                     ),
                   ),
                 ),
@@ -1074,7 +1174,11 @@ class BookSpineCarousel extends StatelessWidget {
           children: [
             Text(
               numStr,
-              style: const TextStyle(fontSize: 9, fontFamily: 'monospace', color: Colors.black45),
+              style: const TextStyle(
+                fontSize: 9,
+                fontFamily: 'monospace',
+                color: Colors.black45,
+              ),
             ),
             const SizedBox(height: 10),
             Expanded(
