@@ -7,6 +7,8 @@ enum ReadMode { horizontal, verticalPage, webtoon }
 
 enum ReadDirection { ltr, rtl }
 
+enum DualPageMode { single, tabletAuto, dual }
+
 enum ImageFitMode { contain, fitWidth, fitHeight }
 
 enum ReaderBgTheme { paper, beige, white, night, black }
@@ -41,10 +43,18 @@ class _ReaderPageState extends State<ReaderPage> {
   // 閱讀設定狀態
   ReadMode _readMode = ReadMode.webtoon;
   ReadDirection _readDirection = ReadDirection.ltr;
+  DualPageMode _dualPageMode = DualPageMode.tabletAuto;
   ImageFitMode _fitMode = ImageFitMode.fitWidth;
   ReaderBgTheme _bgTheme = ReaderBgTheme.paper;
 
   ComicChapter get _currentChapter => widget.chapters[_currentIndex];
+
+  bool _useDualPage(BuildContext context) {
+    if (_readMode == ReadMode.webtoon) return false;
+    if (_dualPageMode == DualPageMode.dual) return true;
+    if (_dualPageMode == DualPageMode.single) return false;
+    return MediaQuery.of(context).size.width >= 600;
+  }
 
   Color get _backgroundColor {
     switch (_bgTheme) {
@@ -126,7 +136,8 @@ class _ReaderPageState extends State<ReaderPage> {
       }
     } else {
       if (_pageController.hasClients) {
-        _pageController.jumpToPage(target);
+        final isDual = _useDualPage(context);
+        _pageController.jumpToPage(isDual ? target ~/ 2 : target);
       }
     }
   }
@@ -188,7 +199,6 @@ class _ReaderPageState extends State<ReaderPage> {
                         ],
                       ),
                     ),
-                    // 本話頁數進度滑桿
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                       child: Row(
@@ -347,6 +357,17 @@ class _ReaderPageState extends State<ReaderPage> {
                         ReadDirection.rtl: '從右往左',
                       },
                       onSelected: (v) => update(() => _readDirection = v),
+                    ),
+                    const SizedBox(height: 16),
+                    _sectionLabel('雙頁顯示'),
+                    _segmentedControl<DualPageMode>(
+                      selected: _dualPageMode,
+                      options: const {
+                        DualPageMode.single: '單頁',
+                        DualPageMode.tabletAuto: '平板自動',
+                        DualPageMode.dual: '雙頁',
+                      },
+                      onSelected: (v) => update(() => _dualPageMode = v),
                     ),
                     const SizedBox(height: 16),
                     _sectionLabel('畫面適配'),
@@ -511,19 +532,47 @@ class _ReaderPageState extends State<ReaderPage> {
       );
     }
 
+    final isDual = _useDualPage(context);
+    final pageCount = isDual ? (_images.length / 2).ceil() : _images.length;
+
     return PageView.builder(
       controller: _pageController,
       scrollDirection:
           _readMode == ReadMode.horizontal ? Axis.horizontal : Axis.vertical,
       reverse: _readMode == ReadMode.horizontal &&
           _readDirection == ReadDirection.rtl,
-      itemCount: _images.length,
-      onPageChanged: (idx) => setState(() => _currentPage = idx),
+      itemCount: pageCount,
+      onPageChanged: (idx) =>
+          setState(() => _currentPage = isDual ? idx * 2 : idx),
       itemBuilder: (_, i) {
+        if (!isDual) {
+          return InteractiveViewer(
+            minScale: 1.0,
+            maxScale: 3.5,
+            child: Center(child: _buildImageItem(_images[i])),
+          );
+        }
+
+        final firstIdx = i * 2;
+        final secondIdx = firstIdx + 1;
+        final hasSecond = secondIdx < _images.length;
+
+        final firstImg = Expanded(child: _buildImageItem(_images[firstIdx]));
+        final secondImg = hasSecond
+            ? Expanded(child: _buildImageItem(_images[secondIdx]))
+            : const Expanded(child: SizedBox.shrink());
+
+        final pair = _readDirection == ReadDirection.rtl
+            ? [secondImg, firstImg]
+            : [firstImg, secondImg];
+
         return InteractiveViewer(
           minScale: 1.0,
           maxScale: 3.5,
-          child: Center(child: _buildImageItem(_images[i])),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: pair,
+          ),
         );
       },
     );
@@ -544,7 +593,6 @@ class _ReaderPageState extends State<ReaderPage> {
             onTap: () => setState(() => _showOverlay = !_showOverlay),
             child: _buildReaderContent(),
           ),
-          // 頂部工具列
           if (_showOverlay)
             Positioned(
               top: 0,
@@ -603,7 +651,6 @@ class _ReaderPageState extends State<ReaderPage> {
                 ),
               ),
             ),
-          // 底部快捷換話列
           if (_showOverlay)
             Positioned(
               bottom: 0,
