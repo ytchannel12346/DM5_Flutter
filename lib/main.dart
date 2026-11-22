@@ -9,6 +9,7 @@ import 'pages/detail_page.dart';
 import 'pages/settings_pages.dart';
 import 'services/app_l10n.dart';
 import 'services/app_settings.dart';
+import 'services/update_service.dart';
 import 'sources/comic_source.dart';
 
 Future<void> main() async {
@@ -125,6 +126,11 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
     super.initState();
     _loadBookshelf();
     _loadDiscover();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        UpdateService.checkUpdate(context, silent: true);
+      }
+    });
   }
 
   Future<void> _loadBookshelf() async {
@@ -705,10 +711,10 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
         ),
         _profileCard(
           icon: Icons.info_outline_rounded,
-          title: '關於',
+          title: '關於 · 檢查更新',
           subtitle:
-              '版本 ${const String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0')} · DM5 Flutter Archive',
-          onTap: () {},
+              '版本 ${const String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0')} · 點擊檢查新版本',
+          onTap: () => UpdateService.checkUpdate(context),
         ),
       ],
     );
