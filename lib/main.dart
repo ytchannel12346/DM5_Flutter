@@ -271,35 +271,42 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
   }
 
   /// 底部懸浮毛玻璃膠囊導覽列
-  Widget _buildFloatingCapsuleNav() {
+Widget _buildFloatingCapsuleNav() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 0, 28, 18),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            height: 64,
-            decoration: BoxDecoration(
-              color: const Color.fromRGBO(255, 255, 255, 0.86),
-              borderRadius: BorderRadius.circular(32),
-              border: Border.all(color: const Color(0xFFE5E2DA)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color.fromRGBO(0, 0, 0, 0.06),
-                  blurRadius: 16,
-                  offset: Offset(0, 6),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                height: 64,
+                decoration: BoxDecoration(
+                  color: const Color.fromRGBO(255, 255, 255, 0.86),
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: const Color(0xFFE5E2DA)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color.fromRGBO(0, 0, 0, 0.06),
+                      blurRadius: 16,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _navItem(Icons.explore_outlined, '發現', 0),
-                _navItem(Icons.library_books_outlined, '書架', 1),
-                _navItem(Icons.folder_outlined, '本地', 2),
-                _navItem(Icons.person_outline_rounded, '我的', 3),
-              ],
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _navItem(Icons.explore_outlined, '發現', 0),
+                    _navItem(Icons.library_books_outlined, '書架', 1),
+                    _navItem(Icons.folder_outlined, '本地', 2),
+                    _navItem(Icons.person_outline_rounded, '我的', 3),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -433,10 +440,50 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
                 onChanged: (i) => setState(() => _discoverActiveIdx = i),
                 onOpen: _openDetail,
               ),
-            const SizedBox(height: 28),
-            _sectionHeader('02 / ARCHIVE INDEX', '更多漫畫'),
-            const SizedBox(height: 14),
-            _buildArchiveGrid(_discoverList),
+child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final isTablet = width >= 600;
+              final maxSideBooks = isTablet ? 6 : 4;
+
+              return SizedBox(
+                height: isTablet ? 320 : 290,
+                width: double.infinity,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: indices.map((i) {
+                    final diff = i - activeIndex;
+                    if (diff.abs() > maxSideBooks) return const SizedBox.shrink();
+
+                    final isSelected = diff == 0;
+                    final double dx = isSelected
+                        ? 0
+                        : (diff > 0
+                            ? 78.0 + (diff - 1) * 32.0
+                            : -78.0 + (diff + 1) * 32.0);
+                    final double dy = isSelected ? -14.0 : 12.0 + diff.abs() * 3.0;
+                    final double scale = isSelected ? 1.0 : (0.90 - diff.abs() * 0.03);
+
+                    return AnimatedPositioned(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      left: width / 2 + dx - (isSelected ? 78 : 22),
+                      top: 32 + dy,
+                      child: GestureDetector(
+                        onTap: () => isSelected ? onOpen(items[i]) : onChanged(i),
+                        child: Transform.scale(
+                          scale: scale,
+                          child: isSelected
+                              ? _buildSelected3DBook(items[i], i)
+                              : _buildSpineBook(items[i], i),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            },
+          ),
           ],
         ],
       ),
@@ -707,11 +754,11 @@ class _ArchiveHomeShellState extends State<ArchiveHomeShell> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 150,
         childAspectRatio: 0.60,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 14,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 16,
       ),
       itemCount: items.length,
       itemBuilder: (_, i) {
