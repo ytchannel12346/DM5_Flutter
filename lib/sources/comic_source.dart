@@ -2,6 +2,7 @@ import '../models/comic.dart';
 import 'dm5_source.dart';
 import 'manhuagui_source.dart';
 import 'manhuaren_source.dart';
+import 'mangabz_source.dart';
 
 abstract class ComicSource {
   String get id;
@@ -21,6 +22,7 @@ class SourceManager {
     Dm5Source(),
     ManhuaguiSource(),
     ManhuarenSource(),
+    MangabzSource(),
   ];
 
   static ComicSource current = sources.first;
