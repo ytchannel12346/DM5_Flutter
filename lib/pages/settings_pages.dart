@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/comic.dart';
+import '../services/app_settings.dart';
 import '../services/history_service.dart';
 import '../sources/comic_source.dart';
 import '../sources/local_comic_source.dart';
@@ -529,7 +532,6 @@ class StorageSettingsPage extends StatelessWidget {
   }
 }
 
-/// 6. 閱讀歷史 (ARCHIVE / READING LOG)
 /// 6. 閱讀歷史 (ARCHIVE / READING LOG)
 class ReadingHistoryPage extends StatefulWidget {
   const ReadingHistoryPage({super.key});
