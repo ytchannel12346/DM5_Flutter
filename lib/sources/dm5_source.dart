@@ -17,6 +17,10 @@ class Dm5Source extends ComicSource {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
+  static const String _mobileUa =
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 '
+      '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
   late final Dio _dio = Dio(
     BaseOptions(
       baseUrl: baseUrl,
@@ -30,11 +34,18 @@ class Dm5Source extends ComicSource {
     ),
   );
 
+  String _toFullUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return '$baseUrl/';
+    if (trimmed.startsWith('http')) return trimmed;
+    return '$baseUrl${trimmed.startsWith('/') ? '' : '/'}$trimmed';
+  }
+
   @override
   Map<String, String> getImageHeaders(String refererUrl) => {
-        'Referer': 'https://www.dm5.com/',
-        'User-Agent': _ua,
-        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        'Referer': _toFullUrl(refererUrl),
+        'User-Agent': _mobileUa,
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
       };
 
   @override
@@ -118,7 +129,8 @@ class Dm5Source extends ComicSource {
 
   @override
   Future<List<String>> getChapterImages(String chapterUrl) async {
-    final res = await _dio.get(chapterUrl);
+    final fullChapterUrl = _toFullUrl(chapterUrl);
+    final res = await _dio.get(fullChapterUrl);
     final htmlStr = res.data.toString();
 
     final doc = html_parser.parse(htmlStr);
@@ -158,7 +170,12 @@ class Dm5Source extends ComicSource {
           '_dt': dt,
           '_sign': sign,
         },
-        options: Options(headers: {'Referer': chapterUrl}),
+        options: Options(
+          headers: {
+            'Referer': fullChapterUrl,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        ),
       );
 
       final unpacked = _unpackJs(funRes.data.toString());
@@ -174,7 +191,7 @@ class Dm5Source extends ComicSource {
     return imageUrls;
   }
 
-String _normalizeUrl(String url) {
+  String _normalizeUrl(String url) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('//')) {
