@@ -46,9 +46,13 @@ jobs:
             cat << 'EOF' >> android/build.gradle.kts
 
           subprojects {
-              plugins.withId("com.android.library") {
-                  extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
-                      compileSdk = 36
+              if (project.name != "app") {
+                  afterEvaluate {
+                      extensions.findByName("android")?.let { ext ->
+                          if (ext is com.android.build.gradle.BaseExtension) {
+                              ext.compileSdkVersion(36)
+                          }
+                      }
                   }
               }
           }
@@ -57,9 +61,13 @@ jobs:
             cat << 'EOF' >> android/build.gradle
 
           subprojects {
-              plugins.withId("com.android.library") {
-                  android {
-                      compileSdkVersion 36
+              if (project.name != "app") {
+                  afterEvaluate { project ->
+                      if (project.hasProperty("android")) {
+                          project.android {
+                              compileSdkVersion 36
+                          }
+                      }
                   }
               }
           }
