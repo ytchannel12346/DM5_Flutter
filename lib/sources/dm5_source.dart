@@ -25,7 +25,6 @@ class Dm5Source extends ComicSource {
       headers: {
         'User-Agent': _ua,
         'Referer': '$baseUrl/',
-        'Cookie': 'isAdult=1',
         'Accept':
             'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
@@ -34,8 +33,8 @@ class Dm5Source extends ComicSource {
   );
 
   String _toFullUrl(String url, {String? preferredOrigin}) {
-    final trimmed = url.trim();
     final origin = preferredOrigin ?? baseUrl;
+    final trimmed = url.trim();
     if (trimmed.isEmpty) return '$origin/';
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return trimmed;
@@ -44,6 +43,12 @@ class Dm5Source extends ComicSource {
       return 'https:$trimmed';
     }
     return '$origin${trimmed.startsWith('/') ? '' : '/'}$trimmed';
+  }
+
+  String _extractCssUrl(String style) {
+    final match = RegExp(r'url\(([^)]+)\)').firstMatch(style);
+    if (match == null) return '';
+    return match.group(1)!.replaceAll(RegExp(r'''["']'''), '').trim();
   }
 
   @override
@@ -67,7 +72,6 @@ class Dm5Source extends ComicSource {
       '/search',
       queryParameters: {
         'title': keyword.trim(),
-        'language': 1,
         'page': page,
       },
     );
@@ -79,8 +83,9 @@ class Dm5Source extends ComicSource {
     final results = <ComicItem>[];
     final seenUrls = <String>{};
 
-    for (final card in doc.querySelectorAll('.mh-list li, .mh-item')) {
-      final anchor = card.querySelector('.mh-item-detali h2.title a, h2.title a, a[href]');
+    final cards = doc.querySelectorAll('.mh-list li, .mh-item, .book-list li');
+    for (final card in cards) {
+      final anchor = card.querySelector('a[href]');
       final href = anchor?.attributes['href']?.trim() ?? '';
       if (href.isEmpty || href.startsWith('javascript:')) continue;
 
@@ -89,15 +94,20 @@ class Dm5Source extends ComicSource {
 
       final coverStyle =
           card.querySelector('.mh-cover')?.attributes['style'] ?? '';
-      final coverMatch = RegExp(r'url\(([^)]+)\)').firstMatch(coverStyle);
-      final rawCover = coverMatch != null
-          ? coverMatch.group(1)!.replaceAll(RegExp(r'''["']'''), '').trim()
-          : (card.querySelector('img')?.attributes['src'] ?? '');
+      final img = card.querySelector('img');
+      final rawCover = _extractCssUrl(coverStyle).isNotEmpty
+          ? _extractCssUrl(coverStyle)
+          : (img?.attributes['data-src'] ?? img?.attributes['src'] ?? '');
 
-      final title = (anchor?.attributes['title'] ?? anchor?.text ?? '').trim();
+      final title = (card.querySelector('.title a, .title, h2')?.text ??
+              anchor?.attributes['title'] ??
+              anchor?.text ??
+              '')
+          .trim();
       if (title.isEmpty) continue;
 
-      final latest = (card.querySelector('.chapter a, .chapter')?.text ?? '').trim();
+      final latest =
+          (card.querySelector('.chapter a, .chapter')?.text ?? '').trim();
 
       results.add(
         ComicItem(
@@ -109,6 +119,7 @@ class Dm5Source extends ComicSource {
         ),
       );
     }
+
     return results;
   }
 
@@ -118,19 +129,12 @@ class Dm5Source extends ComicSource {
     final res = await _dio.get(fullUrl);
     final doc = html_parser.parse(res.data.toString());
 
-    final title =
-        (doc.querySelector('.banner_detail_form .info .title')?.text ?? '')
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
+    final title = (doc.querySelector('.info .title, h1')?.text ?? '').trim();
+    final img = doc.querySelector('.cover img');
     final rawCover =
-        doc.querySelector('.banner_detail_form .cover img')?.attributes['src'] ??
-            '';
-    final author =
-        (doc.querySelector('.banner_detail_form .info .subtitle')?.text ?? '')
-            .trim();
-    final desc =
-        (doc.querySelector('.banner_detail_form .info .content')?.text ?? '暫無簡介')
-            .trim();
+        img?.attributes['data-src'] ?? img?.attributes['src'] ?? '';
+    final author = (doc.querySelector('.subtitle a, .author')?.text ?? '').trim();
+    final desc = (doc.querySelector('.content')?.text ?? '暫無簡介').trim();
 
     final chapters = doc
         .querySelectorAll('#chapterlistload ul li a')
@@ -170,30 +174,26 @@ class Dm5Source extends ComicSource {
     );
     final htmlStr = res.data.toString();
 
-    final cid = RegExp(r'DM5_CID\s*=\s*(\d+)').firstMatch(htmlStr)?.group(1);
-    final mid = RegExp(r'DM5_MID\s*=\s*(\d+)').firstMatch(htmlStr)?.group(1) ?? '';
-    final count = int.tryParse(
-          RegExp(r'DM5_IMAGE_COUNT\s*=\s*(\d+)').firstMatch(htmlStr)?.group(1) ??
-              '0',
-        ) ??
-        0;
-    final sign =
-        RegExp(r'''DM5_VIEWSIGN\s*=\s*["']([^"']+)["']''').firstMatch(htmlStr)?.group(1) ??
-            '';
-    final dt = RegExp(r'''DM5_VIEWSIGN_DT\s*=\s*["']([^"']+)["']''')
-            .firstMatch(htmlStr)
-            ?.group(1) ??
-        '';
+    final cidMatch = RegExp(r'DM5_CID\s*=\s*(\d+)').firstMatch(htmlStr);
+    final midMatch = RegExp(r'DM5_MID\s*=\s*(\d+)').firstMatch(htmlStr);
+    final countMatch = RegExp(r'DM5_IMAGE_COUNT\s*=\s*(\d+)').firstMatch(htmlStr);
+    final signMatch =
+        RegExp(r'''DM5_VIEWSIGN\s*=\s*["']([^"']+)["']''').firstMatch(htmlStr);
+    final dtMatch =
+        RegExp(r'''DM5_VIEWSIGN_DT\s*=\s*["']([^"']+)["']''').firstMatch(htmlStr);
 
-    if (cid == null || count == 0) {
+    if (cidMatch == null || countMatch == null) {
       throw Exception('無法解析 DM5 章節參數');
     }
 
-    final images = <String>[];
-    final seen = <String>{};
+    final cid = cidMatch.group(1)!;
+    final mid = midMatch?.group(1) ?? '0';
+    final imageCount = int.parse(countMatch.group(1)!);
+    final sign = signMatch?.group(1) ?? '';
+    final dt = dtMatch?.group(1) ?? '';
 
-    for (var page = 1; page <= count; page++) {
-      if (images.length >= count) break;
+    final images = <String>[];
+    for (int page = 1; page <= imageCount; page++) {
       final funRes = await _dio.get(
         '$baseUrl/m$cid/chapterfun.ashx',
         queryParameters: {
@@ -207,60 +207,62 @@ class Dm5Source extends ComicSource {
           '_dt': dt,
           '_sign': sign,
         },
-        options: Options(
-          headers: {
-            'Referer': fullUrl,
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-        ),
+        options: Options(headers: {'Referer': fullUrl}),
       );
 
       final unpacked = _unpackJs(funRes.data.toString());
-      final urls = _extractUrls(unpacked);
-      for (final u in urls) {
-        if (seen.add(u)) {
+      final pageUrls = _extractDm5Urls(unpacked);
+      for (final u in pageUrls) {
+        if (!images.contains(u)) {
           images.add(u);
         }
       }
-      if (urls.length > 1) {
-        page += urls.length - 1;
-      }
+      if (images.length >= imageCount) break;
     }
 
     if (images.isEmpty) {
-      throw Exception('DM5 未回傳章節圖片');
+      throw Exception('無法解析 DM5 章節圖片');
     }
     return images;
   }
 
-  List<String> _extractUrls(String js) {
-    final pix =
-        RegExp(r'''var\s+pix\s*=\s*["']([^"']+)["']''').firstMatch(js)?.group(1) ??
-            '';
+  List<String> _extractDm5Urls(String unpacked) {
+    final pixMatch =
+        RegExp(r'''var\s+pix\s*=\s*["']([^"']+)["']''').firstMatch(unpacked);
     final pvalueMatch =
-        RegExp(r'''var\s+pvalue\s*=\s*\[([^\]]+)\]''').firstMatch(js);
-    if (pvalueMatch == null) return [];
+        RegExp(r'''var\s+pvalue\s*=\s*\[([^\]]+)\]''').firstMatch(unpacked);
+    if (pixMatch == null || pvalueMatch == null) return [];
 
-    final query =
-        RegExp(r'''var\s+query\s*=\s*["']([^"']*)["']''').firstMatch(js)?.group(1) ??
-            '';
+    final pix = pixMatch.group(1)!;
+    final cidMatch = RegExp(r'var\s+cid\s*=\s*(\d+)').firstMatch(unpacked);
+    final keyMatch =
+        RegExp(r'''var\s+key\s*=\s*["']([^"']*)["']''').firstMatch(unpacked);
+    final ukMatch =
+        RegExp(r'''var\s+uk\s*=\s*["']([^"']*)["']''').firstMatch(unpacked);
+    final queryMatch =
+        RegExp(r'''var\s+query\s*=\s*["']([^"']*)["']''').firstMatch(unpacked);
+
+    String query = queryMatch?.group(1) ?? '';
+    if (query.isEmpty && (cidMatch != null || keyMatch != null)) {
+      final cid = cidMatch?.group(1) ?? '';
+      final key = keyMatch?.group(1) ?? '';
+      final uk = ukMatch?.group(1) ?? '';
+      query = '?cid=$cid&key=$key&uk=$uk';
+    }
 
     return RegExp(r'''["']([^"']+)["']''')
         .allMatches(pvalueMatch.group(1)!)
         .map((m) {
-          final file = m.group(1)!;
-          if (file.startsWith('http://') || file.startsWith('https://')) {
-            return '$file$query';
-          }
-          return '$pix$file$query';
+          final p = m.group(1)!;
+          if (p.contains('?')) return '$pix$p';
+          return '$pix$p$query';
         })
-        .where((u) => u.startsWith('http'))
         .toList();
   }
 
   String _unpackJs(String packed) {
     final match = RegExp(
-      r"\}\('(.*)',\s*(\d+),\s*(\d+),\s*'([^']*)'\.split\('\|'\)",
+      r"\}\('(.*?)',\s*(\d+),\s*(\d+),\s*'([^']*)'\.split\('\|'\)",
       dotAll: true,
     ).firstMatch(packed);
     if (match == null) return packed;
