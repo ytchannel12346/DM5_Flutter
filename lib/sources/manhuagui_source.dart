@@ -116,7 +116,9 @@ class ManhuaguiSource extends ComicSource {
 
       final title = (img?.attributes['alt'] ??
               anchor?.attributes['title'] ??
-              el.querySelector('.title, .book-title, h3, h4, .txt a, p')?.text ??
+              el
+                  .querySelector('.title, .book-title, h3, h4, .txt a, p')
+                  ?.text ??
               anchor?.text ??
               '')
           .trim();
@@ -238,3 +240,47 @@ class ManhuaguiSource extends ComicSource {
   Future<List<String>> getChapterImages(String chapterUrl) async {
     final fullUrl = _toFullUrl(chapterUrl);
     final res = await _dio.get(
+      fullUrl,
+      options: Options(headers: {'Referer': '$baseUrl/'}),
+    );
+    final htmlStr = res.data.toString();
+    final doc = html_parser.parse(htmlStr);
+
+    final direct = doc
+        .querySelectorAll('#mangaFile, #mangaBox img, .manga-page img, img[data-src]')
+        .map((e) => e.attributes['data-src'] ?? e.attributes['src'] ?? '')
+        .map((u) => u.trim())
+        .where((u) => u.isNotEmpty && !u.startsWith('data:'))
+        .map(_toFullUrl)
+        .toList();
+    if (direct.isNotEmpty) return direct;
+
+    final filesMatch =
+        RegExp(r'''["']?files["']?\s*:\s*\[([^\]]+)\]''').firstMatch(htmlStr);
+    final pathMatch =
+        RegExp(r'''["']?path["']?\s*:\s*["']([^"']+)["']''').firstMatch(htmlStr);
+
+    if (filesMatch != null) {
+      final host = pathMatch?.group(1) ?? 'https://i.hamreus.com';
+      final prefix = host.startsWith('http') ? host : 'https:$host';
+      final cleanPrefix =
+          prefix.endsWith('/') ? prefix.substring(0, prefix.length - 1) : prefix;
+
+      return RegExp(r'''["']([^"']+\.(?:jpg|jpeg|png|webp))["']''',
+              caseSensitive: false)
+          .allMatches(filesMatch.group(1)!)
+          .map((m) {
+            final file = m.group(1)!;
+            if (file.startsWith('http')) return file;
+            final cleanFile =
+                file.startsWith('/') ? file.substring(1) : file;
+            return '$cleanPrefix/$cleanFile';
+          })
+          .toList();
+    }
+
+    throw Exception(
+      '無法解析 Manhuagui 章節圖片（可能需要 LZString 解壓縮腳本或驗證）',
+    );
+  }
+}
