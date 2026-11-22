@@ -487,12 +487,29 @@ class _ReaderPageState extends State<ReaderPage> {
           ),
         ),
       ),
-      errorWidget: (_, __, ___) => SizedBox(
-        height: 200,
-        child: Center(
-          child: Icon(
-            Icons.broken_image_outlined,
-            color: _isDarkBg ? Colors.white54 : Colors.black38,
+errorWidget: (_, url, error) => Container(
+        padding: const EdgeInsets.all(16),
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.broken_image_outlined,
+              color: _isDarkBg ? Colors.white54 : Colors.black38,
+              size: 32,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '錯誤：$error\n網址：$url',
+              style: TextStyle(
+                fontSize: 11,
+                color: _isDarkBg ? Colors.white70 : Colors.black54,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
           ),
         ),
       ),
