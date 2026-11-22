@@ -58,4 +58,4 @@ jobs:
         run: cp build/app/outputs/flutter-apk/app-release.apk comic-reader-v1.0.${{ github.run_number }}.apk
 
       - name: Create Versioned GitHub Release
-        uses: softprops/action-gh-release@
+        uses: softprops/action-gh-release@v2
