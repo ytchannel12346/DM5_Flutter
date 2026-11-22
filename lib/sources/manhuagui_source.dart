@@ -274,9 +274,10 @@ class ManhuaguiSource extends ComicSource {
     final urls = _extractImageUrlsFromScript(combinedSource);
     if (urls.isNotEmpty) return urls;
 
-    throw Exception(
-      '無法解析 Manhuagui 章節圖片（未找到 files/path 或 LZString 內容）',
-    );
+    final preview = unpacked.isNotEmpty
+        ? unpacked.substring(0, unpacked.length > 120 ? 120 : unpacked.length)
+        : 'unpacked為空';
+    throw Exception('無法解析 Manhuagui 章節圖片：$preview');
   }
 
   List<String> _extractImageUrlsFromScript(String source) {
@@ -288,12 +289,10 @@ class ManhuaguiSource extends ComicSource {
     final pathMatch =
         RegExp(r'''["']?path["']?\s*:\s*["']([^"']+)["']''').firstMatch(source);
     final rawPath = pathMatch?.group(1)?.trim() ?? '';
-    const host = 'https://i.hamreus.com';
-    final prefix = rawPath.startsWith('http')
+    final host = rawPath.startsWith('http') || rawPath.startsWith('//')
         ? rawPath
-        : (rawPath.startsWith('//')
-            ? 'https:$rawPath'
-            : '$host${rawPath.startsWith('/') ? rawPath : '/$rawPath'}');
+        : 'https://i.hamreus.com${rawPath.startsWith('/') ? rawPath : '/$rawPath'}';
+    final prefix = host.startsWith('//') ? 'https:$host' : host;
     final cleanPrefix =
         prefix.endsWith('/') ? prefix.substring(0, prefix.length - 1) : prefix;
 
@@ -324,7 +323,7 @@ class ManhuaguiSource extends ComicSource {
 
   String _unpackJs(String packed) {
     final match = RegExp(
-      r"\}\('(.*?)',\s*(\d+),\s*(\d+),\s*'([^']+)'(?:\.split\('\|'\)|\[['\\x73p]+l['\\x69c]+\]\(['\\x7c]+\)|\.splic\('\|'\))",
+      r"\}\('(.*?)',\s*(\d+),\s*(\d+),\s*'([^']+)'",
       dotAll: true,
     ).firstMatch(packed);
     if (match == null) return '';
