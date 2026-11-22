@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
 import '../models/comic.dart';
@@ -60,9 +61,58 @@ class ManhuarenSource extends ComicSource {
 
   @override
   Future<List<ComicItem>> getPopular({int page = 1}) async {
-    final path = page <= 1 ? '/manhua-list/' : '/manhua-list-p$page/';
-    final res = await _dio.get(path);
-    return _parseComicList(res.data.toString(), sourcePath: path);
+    final res = await _dio.post(
+      '/dm5.ashx',
+      data: {
+        'pagesize': 21,
+        'pageindex': page,
+        'tagid': 0,
+        'status': 0,
+        'usergroup': 0,
+        'pay': -1,
+        'areaid': 0,
+        'sort': 10,
+        'subject': 0,
+        'action': 'getclasscomics',
+      },
+      options: Options(
+        contentType: Headers.formUrlEncodedContentType,
+        headers: {
+          'Referer': '$baseUrl/manhua-list/',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      ),
+    );
+
+    final raw = res.data is String ? jsonDecode(res.data) : res.data;
+    final items = (raw is Map ? raw['UpdateComicItems'] : null) as List? ?? [];
+
+    final results = <ComicItem>[];
+    for (final item in items) {
+      if (item is! Map) continue;
+      final title = (item['Title'] ?? '').toString().trim();
+      final urlKey = (item['UrlKey'] ?? '').toString().trim();
+      final cover = (item['ShowPicUrlB'] ?? item['ShowConver'] ?? '')
+          .toString()
+          .trim();
+      final latest = (item['ShowLastPartName'] ?? '').toString().trim();
+      if (title.isEmpty || urlKey.isEmpty) continue;
+
+      results.add(
+        ComicItem(
+          sourceId: id,
+          title: title,
+          url: _toFullUrl('/$urlKey/'),
+          cover: cover.isEmpty ? '' : _toFullUrl(cover),
+          latestChapter: latest,
+        ),
+      );
+    }
+
+    if (results.isEmpty) {
+      throw Exception('Manhuaren API 未回傳漫畫項目');
+    }
+    return results;
   }
 
   @override
