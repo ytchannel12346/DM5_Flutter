@@ -11,11 +11,11 @@ class ManhuarenSource extends ComicSource {
   String get name => '漫畫人 (Manhuaren)';
 
   @override
-  String get baseUrl => 'https://www.manhuaren.com';
+  String get baseUrl => 'https://m.manhuaren.com';
 
   static const String _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 '
+      '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
   late final Dio _dio = Dio(
     BaseOptions(
@@ -24,7 +24,7 @@ class ManhuarenSource extends ComicSource {
       receiveTimeout: const Duration(seconds: 15),
       headers: {
         'User-Agent': _ua,
-        'Referer': '$baseUrl/manhua-list/',
+        'Referer': '$baseUrl/',
         'Accept':
             'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
@@ -52,7 +52,7 @@ class ManhuarenSource extends ComicSource {
 
   @override
   Map<String, String> getImageHeaders(String refererUrl) => {
-        'Referer': _toFullUrl(refererUrl),
+        'Referer': '$baseUrl/',
         'User-Agent': _ua,
         'Accept':
             'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
@@ -90,7 +90,7 @@ class ManhuarenSource extends ComicSource {
     final seenUrls = <String>{};
 
     final cards = doc.querySelectorAll(
-      '.mh-list li, .manga-list li, .book-list li, .list-con li, .mh-item, li, a[href]',
+      '.manga-list-2 li, .mh-list li, .manga-list li, .book-list li, .list-con li, .mh-item, li, a[href]',
     );
 
     for (final card in cards) {
@@ -131,7 +131,7 @@ class ManhuarenSource extends ComicSource {
       final title = (img?.attributes['alt'] ??
               anchor?.attributes['title'] ??
               card
-                  .querySelector('.title, .mh-title, h3, h4, p.ell, a')
+                  .querySelector('.title, .mh-title, .manga-list-2-title, h3, h4, p.ell, a')
                   ?.text ??
               anchor?.text ??
               '')
@@ -140,7 +140,7 @@ class ManhuarenSource extends ComicSource {
       if (title.isEmpty || title.length > 80) continue;
 
       final latest = (card
-                  .querySelector('.chapter, .update, .status, p.ell')
+                  .querySelector('.chapter, .update, .status, .manga-list-2-tip, p.ell')
                   ?.text ??
               '')
           .trim();
@@ -157,11 +157,14 @@ class ManhuarenSource extends ComicSource {
     }
 
     if (results.isEmpty) {
-      final snippet = htmlStr
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .substring(0, htmlStr.length > 140 ? 140 : htmlStr.length);
+      final sampleLinks = doc
+          .querySelectorAll('a[href]')
+          .map((a) => a.attributes['href'] ?? '')
+          .where((h) => h.isNotEmpty)
+          .take(8)
+          .join(', ');
       throw Exception(
-        'Manhuaren ($sourcePath) 未解析出漫畫項目，頁面片段：$snippet',
+        'Manhuaren ($sourcePath) 未解析出漫畫項目，連結樣本：$sampleLinks',
       );
     }
 
@@ -175,7 +178,7 @@ class ManhuarenSource extends ComicSource {
     final doc = html_parser.parse(res.data.toString());
 
     final title = (doc
-                .querySelector('.detail-main-info .title, .book-title, h1')
+                .querySelector('.detail-main-info-title, .detail-main-info .title, .book-title, h1')
                 ?.text ??
             '')
         .trim();
@@ -188,7 +191,7 @@ class ManhuarenSource extends ComicSource {
 
     final author = (doc
                 .querySelector(
-                  '.detail-main-info .author, .author a, [class*="author"]',
+                  '.detail-main-info-author, .detail-main-info .author, .author a, [class*="author"]',
                 )
                 ?.text ??
             '')
@@ -196,7 +199,7 @@ class ManhuarenSource extends ComicSource {
 
     final desc = (doc
                 .querySelector(
-                  '.detail-main-info .content, .book-intro, .intro, .desc',
+                  '.detail-desc, .detail-main-info .content, .book-intro, .intro',
                 )
                 ?.text ??
             '暫無簡介')
@@ -206,7 +209,7 @@ class ManhuarenSource extends ComicSource {
     final seenChapterUrls = <String>{};
 
     for (final a in doc.querySelectorAll(
-      '#chapterlistload a[href], .chapter-list a[href], #detail-list-select a[href], a[href*="/m"]',
+      '#detail-list-select-1 a[href], #chapterlistload a[href], .chapter-list a[href], #detail-list-select a[href], a[href*="/m"]',
     )) {
       final href = a.attributes['href']?.trim() ?? '';
       final text = a.text.trim();
