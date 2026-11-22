@@ -228,26 +228,26 @@ class Dm5Source extends ComicSource {
 
   List<String> _extractDm5Urls(String unpacked) {
     final pixMatch =
-        RegExp(r'''var\s+pix\s*=\s*["']([^"']+)["']''').firstMatch(unpacked);
+        RegExp(r'''pix\s*=\s*["']([^"']+)["']''').firstMatch(unpacked);
     final pvalueMatch =
-        RegExp(r'''var\s+pvalue\s*=\s*\[([^\]]+)\]''').firstMatch(unpacked);
+        RegExp(r'''pvalue\s*=\s*\[([^\]]+)\]''').firstMatch(unpacked);
     if (pixMatch == null || pvalueMatch == null) return [];
 
     final pix = pixMatch.group(1)!;
-    final cidMatch = RegExp(r'var\s+cid\s*=\s*(\d+)').firstMatch(unpacked);
+    final cidMatch = RegExp(r'\bcid\s*=\s*(\d+)').firstMatch(unpacked);
     final keyMatch =
-        RegExp(r'''var\s+key\s*=\s*["']([^"']*)["']''').firstMatch(unpacked);
+        RegExp(r'''\bkey\s*=\s*["']([^"']+)["']''').firstMatch(unpacked);
     final ukMatch =
-        RegExp(r'''var\s+uk\s*=\s*["']([^"']*)["']''').firstMatch(unpacked);
+        RegExp(r'''\buk\s*=\s*["']([^"']+)["']''').firstMatch(unpacked);
     final queryMatch =
-        RegExp(r'''var\s+query\s*=\s*["']([^"']*)["']''').firstMatch(unpacked);
+        RegExp(r'''\bquery\s*=\s*["']([^"']+)["']''').firstMatch(unpacked);
 
     String query = queryMatch?.group(1) ?? '';
-    if (query.isEmpty && (cidMatch != null || keyMatch != null)) {
+    if (query.isEmpty && keyMatch != null) {
       final cid = cidMatch?.group(1) ?? '';
-      final key = keyMatch?.group(1) ?? '';
+      final key = keyMatch.group(1)!;
       final uk = ukMatch?.group(1) ?? '';
-      query = '?cid=$cid&key=$key&uk=$uk';
+      query = '?cid=$cid&key=$key${uk.isNotEmpty ? '&uk=$uk' : ''}';
     }
 
     return RegExp(r'''["']([^"']+)["']''')
