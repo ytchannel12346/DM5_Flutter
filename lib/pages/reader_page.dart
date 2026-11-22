@@ -306,450 +306,448 @@ class _ReaderPageState extends State<ReaderPage> {
         );
       },
     );
-  },
-);
-}
+  }
 
-void _openSettingsSheet() {
-showModalBottomSheet(
-  context: context,
-  isScrollControlled: true,
-  backgroundColor: const Color(0xFFF7F6F2),
-  shape: const RoundedRectangleBorder(
-    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-  ),
-  builder: (ctx) {
-    return StatefulBuilder(
-      builder: (context, setModalState) {
-        void update(VoidCallback fn) {
-          setState(fn);
-          setModalState(() {});
-        }
+  void _openSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFF7F6F2),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            void update(VoidCallback fn) {
+              setState(fn);
+              setModalState(() {});
+            }
 
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      '閱讀設定',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1F1F1F),
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.black26,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                    const Spacer(),
-                    _circleCloseButton(() => Navigator.pop(ctx)),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        const Text(
+                          '閱讀設定',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1F1F1F),
+                          ),
+                        ),
+                        const Spacer(),
+                        _circleCloseButton(() => Navigator.pop(ctx)),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    _sectionLabel('閱讀方式'),
+                    _segmentedControl<ReadMode>(
+                      selected: _readMode,
+                      options: const {
+                        ReadMode.horizontal: '橫向翻頁',
+                        ReadMode.verticalPage: '上下翻頁',
+                        ReadMode.webtoon: '條漫',
+                      },
+                      onSelected: (v) => update(() => _readMode = v),
+                    ),
+                    const SizedBox(height: 16),
+                    _sectionLabel('閱讀方向'),
+                    _segmentedControl<ReadDirection>(
+                      selected: _readDirection,
+                      options: const {
+                        ReadDirection.ltr: '從左往右',
+                        ReadDirection.rtl: '從右往左',
+                      },
+                      onSelected: (v) => update(() => _readDirection = v),
+                    ),
+                    const SizedBox(height: 16),
+                    _sectionLabel('雙頁顯示'),
+                    _segmentedControl<DualPageMode>(
+                      selected: _dualPageMode,
+                      options: const {
+                        DualPageMode.single: '單頁',
+                        DualPageMode.tabletAuto: '平板自動',
+                        DualPageMode.dual: '雙頁',
+                      },
+                      onSelected: (v) => update(() => _dualPageMode = v),
+                    ),
+                    const SizedBox(height: 16),
+                    _sectionLabel('畫面適配'),
+                    _segmentedControl<ImageFitMode>(
+                      selected: _fitMode,
+                      options: const {
+                        ImageFitMode.contain: '完整顯示',
+                        ImageFitMode.fitWidth: '適應寬度',
+                        ImageFitMode.fitHeight: '適應高度',
+                      },
+                      onSelected: (v) => update(() => _fitMode = v),
+                    ),
+                    const SizedBox(height: 16),
+                    _sectionLabel('閱讀底色'),
+                    _segmentedControl<ReaderBgTheme>(
+                      selected: _bgTheme,
+                      options: const {
+                        ReaderBgTheme.paper: '紙白',
+                        ReaderBgTheme.beige: '米黃',
+                        ReaderBgTheme.white: '純白',
+                        ReaderBgTheme.night: '夜間',
+                        ReaderBgTheme.black: '純黑',
+                      },
+                      onSelected: (v) => update(() => _bgTheme = v),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 18),
-                _sectionLabel('閱讀方式'),
-                _segmentedControl<ReadMode>(
-                  selected: _readMode,
-                  options: const {
-                    ReadMode.horizontal: '橫向翻頁',
-                    ReadMode.verticalPage: '上下翻頁',
-                    ReadMode.webtoon: '條漫',
-                  },
-                  onSelected: (v) => update(() => _readMode = v),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _circleCloseButton(VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.close, size: 18, color: Colors.black87),
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          color: Colors.black54,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _segmentedControl<T>({
+    required T selected,
+    required Map<T, String> options,
+    required ValueChanged<T> onSelected,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        children: options.entries.map((entry) {
+          final isSelected = entry.key == selected;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onSelected(entry.key),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFFEBE9E4)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                const SizedBox(height: 16),
-                _sectionLabel('閱讀方向'),
-                _segmentedControl<ReadDirection>(
-                  selected: _readDirection,
-                  options: const {
-                    ReadDirection.ltr: '從左往右',
-                    ReadDirection.rtl: '從右往左',
-                  },
-                  onSelected: (v) => update(() => _readDirection = v),
+                alignment: Alignment.center,
+                child: Text(
+                  entry.value,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected ? const Color(0xFF1F1F1F) : Colors.black54,
+                  ),
                 ),
-                const SizedBox(height: 16),
-                _sectionLabel('雙頁顯示'),
-                _segmentedControl<DualPageMode>(
-                  selected: _dualPageMode,
-                  options: const {
-                    DualPageMode.single: '單頁',
-                    DualPageMode.tabletAuto: '平板自動',
-                    DualPageMode.dual: '雙頁',
-                  },
-                  onSelected: (v) => update(() => _dualPageMode = v),
-                ),
-                const SizedBox(height: 16),
-                _sectionLabel('畫面適配'),
-                _segmentedControl<ImageFitMode>(
-                  selected: _fitMode,
-                  options: const {
-                    ImageFitMode.contain: '完整顯示',
-                    ImageFitMode.fitWidth: '適應寬度',
-                    ImageFitMode.fitHeight: '適應高度',
-                  },
-                  onSelected: (v) => update(() => _fitMode = v),
-                ),
-                const SizedBox(height: 16),
-                _sectionLabel('閱讀底色'),
-                _segmentedControl<ReaderBgTheme>(
-                  selected: _bgTheme,
-                  options: const {
-                    ReaderBgTheme.paper: '紙白',
-                    ReaderBgTheme.beige: '米黃',
-                    ReaderBgTheme.white: '純白',
-                    ReaderBgTheme.night: '夜間',
-                    ReaderBgTheme.black: '純黑',
-                  },
-                  onSelected: (v) => update(() => _bgTheme = v),
-                ),
-              ],
+              ),
             ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildImageItem(String url) {
+    return CachedNetworkImage(
+      imageUrl: url,
+      httpHeaders: widget.source.getImageHeaders(_currentChapter.url),
+      fit: _boxFit,
+      placeholder: (_, __) => SizedBox(
+        height: 360,
+        child: Center(
+          child: CircularProgressIndicator(
+            color: _isDarkBg ? Colors.white54 : Colors.black45,
+          ),
+        ),
+      ),
+      errorWidget: (_, errUrl, error) => Container(
+        padding: const EdgeInsets.all(16),
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.broken_image_outlined,
+              color: _isDarkBg ? Colors.white54 : Colors.black38,
+              size: 32,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '錯誤：$error\n網址：$errUrl',
+              style: TextStyle(
+                fontSize: 11,
+                color: _isDarkBg ? Colors.white70 : Colors.black54,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReaderContent() {
+    if (_loading) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: _isDarkBg ? Colors.white : Colors.black87,
+        ),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _error!,
+            style: TextStyle(color: _isDarkBg ? Colors.white : Colors.black87),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    if (_readMode == ReadMode.webtoon) {
+      return InteractiveViewer(
+        minScale: 1.0,
+        maxScale: 3.0,
+        child: ListView.builder(
+          controller: _scrollController,
+          itemCount: _images.length,
+          itemBuilder: (_, i) => _buildImageItem(_images[i]),
+        ),
+      );
+    }
+
+    final isDual = _useDualPage(context);
+    final pageCount = isDual ? (_images.length / 2).ceil() : _images.length;
+
+    return PageView.builder(
+      controller: _pageController,
+      scrollDirection:
+          _readMode == ReadMode.horizontal ? Axis.horizontal : Axis.vertical,
+      reverse: _readMode == ReadMode.horizontal &&
+          _readDirection == ReadDirection.rtl,
+      itemCount: pageCount,
+      onPageChanged: (idx) =>
+          setState(() => _currentPage = isDual ? idx * 2 : idx),
+      itemBuilder: (_, i) {
+        if (!isDual) {
+          return InteractiveViewer(
+            minScale: 1.0,
+            maxScale: 3.5,
+            child: Center(child: _buildImageItem(_images[i])),
+          );
+        }
+
+        final firstIdx = i * 2;
+        final secondIdx = firstIdx + 1;
+        final hasSecond = secondIdx < _images.length;
+
+        final firstImg = Expanded(child: _buildImageItem(_images[firstIdx]));
+        final secondImg = hasSecond
+            ? Expanded(child: _buildImageItem(_images[secondIdx]))
+            : const Expanded(child: SizedBox.shrink());
+
+        final pair = _readDirection == ReadDirection.rtl
+            ? [secondImg, firstImg]
+            : [firstImg, secondImg];
+
+        return InteractiveViewer(
+          minScale: 1.0,
+          maxScale: 3.5,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: pair,
           ),
         );
       },
     );
-  },
-);
-}
+  }
 
-Widget _circleCloseButton(VoidCallback onTap) {
-return InkWell(
-  onTap: onTap,
-  borderRadius: BorderRadius.circular(20),
-  child: Container(
-    width: 34,
-    height: 34,
-    decoration: const BoxDecoration(
-      color: Colors.white,
-      shape: BoxShape.circle,
-    ),
-    child: const Icon(Icons.close, size: 18, color: Colors.black87),
-  ),
-);
-}
+  @override
+  Widget build(BuildContext context) {
+    final topBg = _isDarkBg
+        ? const Color.fromRGBO(28, 28, 30, 0.92)
+        : const Color.fromRGBO(247, 246, 242, 0.94);
+    final topFg = _isDarkBg ? Colors.white : const Color(0xFF1F1F1F);
 
-Widget _sectionLabel(String text) {
-return Padding(
-  padding: const EdgeInsets.only(bottom: 8),
-  child: Text(
-    text,
-    style: const TextStyle(
-      fontSize: 13,
-      color: Colors.black54,
-      fontWeight: FontWeight.w500,
-    ),
-  ),
-);
-}
-
-Widget _segmentedControl<T>({
-required T selected,
-required Map<T, String> options,
-required ValueChanged<T> onSelected,
-}) {
-return Container(
-  padding: const EdgeInsets.all(4),
-  decoration: BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(24),
-  ),
-  child: Row(
-    children: options.entries.map((entry) {
-      final isSelected = entry.key == selected;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => onSelected(entry.key),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? const Color(0xFFEBE9E4)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              entry.value,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? const Color(0xFF1F1F1F) : Colors.black54,
+    return Scaffold(
+      backgroundColor: _backgroundColor,
+      body: Stack(
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _showOverlay = !_showOverlay),
+            child: _buildReaderContent(),
+          ),
+          if (_showOverlay)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                color: topBg,
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.chevron_left,
+                            color: topFg,
+                            size: 28,
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _currentChapter.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: topFg,
+                                ),
+                              ),
+                              Text(
+                                '${widget.source.name} / COMIC',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: topFg.withOpacity(0.55),
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '目錄',
+                          icon: Icon(
+                            Icons.format_list_bulleted_rounded,
+                            color: topFg,
+                          ),
+                          onPressed: _openTocSheet,
+                        ),
+                        IconButton(
+                          tooltip: '閱讀設定',
+                          icon: Icon(Icons.tune_rounded, color: topFg),
+                          onPressed: _openSettingsSheet,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      );
-    }).toList(),
-  ),
-);
-}
-
-Widget _buildImageItem(String url) {
-return CachedNetworkImage(
-  imageUrl: url,
-  httpHeaders: widget.source.getImageHeaders(_currentChapter.url),
-  fit: _boxFit,
-  placeholder: (_, __) => SizedBox(
-    height: 360,
-    child: Center(
-      child: CircularProgressIndicator(
-        color: _isDarkBg ? Colors.white54 : Colors.black45,
-      ),
-    ),
-  ),
-  errorWidget: (_, errUrl, error) => Container(
-    padding: const EdgeInsets.all(16),
-    alignment: Alignment.center,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          Icons.broken_image_outlined,
-          color: _isDarkBg ? Colors.white54 : Colors.black38,
-          size: 32,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '錯誤：$error\n網址：$errUrl',
-          style: TextStyle(
-            fontSize: 11,
-            color: _isDarkBg ? Colors.white70 : Colors.black54,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    ),
-  ),
-);
-}
-
-Widget _buildReaderContent() {
-if (_loading) {
-  return Center(
-    child: CircularProgressIndicator(
-      color: _isDarkBg ? Colors.white : Colors.black87,
-    ),
-  );
-}
-if (_error != null) {
-  return Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Text(
-        _error!,
-        style: TextStyle(color: _isDarkBg ? Colors.white : Colors.black87),
-        textAlign: TextAlign.center,
-      ),
-    ),
-  );
-}
-
-if (_readMode == ReadMode.webtoon) {
-  return InteractiveViewer(
-    minScale: 1.0,
-    maxScale: 3.0,
-    child: ListView.builder(
-      controller: _scrollController,
-      itemCount: _images.length,
-      itemBuilder: (_, i) => _buildImageItem(_images[i]),
-    ),
-  );
-}
-
-final isDual = _useDualPage(context);
-final pageCount = isDual ? (_images.length / 2).ceil() : _images.length;
-
-return PageView.builder(
-  controller: _pageController,
-  scrollDirection:
-      _readMode == ReadMode.horizontal ? Axis.horizontal : Axis.vertical,
-  reverse: _readMode == ReadMode.horizontal &&
-      _readDirection == ReadDirection.rtl,
-  itemCount: pageCount,
-  onPageChanged: (idx) =>
-      setState(() => _currentPage = isDual ? idx * 2 : idx),
-  itemBuilder: (_, i) {
-    if (!isDual) {
-      return InteractiveViewer(
-        minScale: 1.0,
-        maxScale: 3.5,
-        child: Center(child: _buildImageItem(_images[i])),
-      );
-    }
-
-    final firstIdx = i * 2;
-    final secondIdx = firstIdx + 1;
-    final hasSecond = secondIdx < _images.length;
-
-    final firstImg = Expanded(child: _buildImageItem(_images[firstIdx]));
-    final secondImg = hasSecond
-        ? Expanded(child: _buildImageItem(_images[secondIdx]))
-        : const Expanded(child: SizedBox.shrink());
-
-    final pair = _readDirection == ReadDirection.rtl
-        ? [secondImg, firstImg]
-        : [firstImg, secondImg];
-
-    return InteractiveViewer(
-      minScale: 1.0,
-      maxScale: 3.5,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: pair,
-      ),
-    );
-  },
-);
-}
-
-@override
-Widget build(BuildContext context) {
-final topBg = _isDarkBg
-    ? const Color.fromRGBO(28, 28, 30, 0.92)
-    : const Color.fromRGBO(247, 246, 242, 0.94);
-final topFg = _isDarkBg ? Colors.white : const Color(0xFF1F1F1F);
-
-return Scaffold(
-  backgroundColor: _backgroundColor,
-  body: Stack(
-    children: [
-      GestureDetector(
-        onTap: () => setState(() => _showOverlay = !_showOverlay),
-        child: _buildReaderContent(),
-      ),
-      if (_showOverlay)
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            color: topBg,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
+          if (_showOverlay)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                color: topBg,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
+                  horizontal: 16,
                   vertical: 8,
                 ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.chevron_left,
-                        color: topFg,
-                        size: 28,
+                child: SafeArea(
+                  top: false,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _currentIndex < widget.chapters.length - 1
+                            ? () {
+                                _currentIndex++;
+                                _loadChapter();
+                              }
+                            : null,
+                        icon: Icon(Icons.chevron_left, color: topFg),
+                        label: Text('上一話', style: TextStyle(color: topFg)),
                       ),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _currentChapter.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: topFg,
-                            ),
-                          ),
-                          Text(
-                            '${widget.source.name} / COMIC',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: topFg.withOpacity(0.55),
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        ],
+                      Text(
+                        _images.isEmpty
+                            ? '載入中...'
+                            : '${_currentPage + 1} / ${_images.length}',
+                        style: TextStyle(
+                          color: topFg.withOpacity(0.7),
+                          fontFamily: 'monospace',
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: '目錄',
-                      icon: Icon(
-                        Icons.format_list_bulleted_rounded,
-                        color: topFg,
+                      TextButton.icon(
+                        onPressed: _currentIndex > 0
+                            ? () {
+                                _currentIndex--;
+                                _loadChapter();
+                              }
+                            : null,
+                        icon: Icon(Icons.chevron_right, color: topFg),
+                        label: Text('下一話', style: TextStyle(color: topFg)),
                       ),
-                      onPressed: _openTocSheet,
-                    ),
-                    IconButton(
-                      tooltip: '閱讀設定',
-                      icon: Icon(Icons.tune_rounded, color: topFg),
-                      onPressed: _openSettingsSheet,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-      if (_showOverlay)
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            color: topBg,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            child: SafeArea(
-              top: false,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton.icon(
-                    onPressed: _currentIndex < widget.chapters.length - 1
-                        ? () {
-                            _currentIndex++;
-                            _loadChapter();
-                          }
-                        : null,
-                    icon: Icon(Icons.chevron_left, color: topFg),
-                    label: Text('上一話', style: TextStyle(color: topFg)),
-                  ),
-                  Text(
-                    _images.isEmpty
-                        ? '載入中...'
-                        : '${_currentPage + 1} / ${_images.length}',
-                    style: TextStyle(
-                      color: topFg.withOpacity(0.7),
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _currentIndex > 0
-                        ? () {
-                            _currentIndex--;
-                            _loadChapter();
-                          }
-                        : null,
-                    icon: Icon(Icons.chevron_right, color: topFg),
-                    label: Text('下一話', style: TextStyle(color: topFg)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-    ],
-  ),
-);
-}
+        ],
+      ),
+    );
+  }
 }
