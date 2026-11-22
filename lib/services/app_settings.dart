@@ -3,56 +3,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class HistoryRecord {
-  final String title;
-  final String url;
-  final String sourceId;
-  final String chapterTitle;
-  final int progressPercent;
-  final String timestamp;
-
-  const HistoryRecord({
-    required this.title,
-    required this.url,
-    required this.sourceId,
-    required this.chapterTitle,
-    required this.progressPercent,
-    required this.timestamp,
-  });
-
-  Map<String, dynamic> toJson() => {
-        'title': title,
-        'url': url,
-        'sourceId': sourceId,
-        'chapterTitle': chapterTitle,
-        'progressPercent': progressPercent,
-        'timestamp': timestamp,
-      };
-
-  factory HistoryRecord.fromJson(Map<String, dynamic> j) => HistoryRecord(
-        title: j['title'] ?? '',
-        url: j['url'] ?? '',
-        sourceId: j['sourceId'] ?? 'dm5',
-        chapterTitle: j['chapterTitle'] ?? '第 1 話',
-        progressPercent: j['progressPercent'] ?? 0,
-        timestamp: j['timestamp'] ?? '',
-      );
-}
-
 class AppSettings extends ChangeNotifier {
-  static final AppSettings instance = AppSettings._();
   AppSettings._();
+  static final AppSettings instance = AppSettings._();
+
+  static const _settingsKey = 'app_settings_v1';
+  static const _historyKey = 'read_history_v1';
 
   // 使用方式
   bool forcePortrait = false;
   bool tapToReadDirectly = false;
-  int startupTab = 0; // 0:發現, 1:書架, 2:本地, 3:我的
+  int startupTab = 0;
   bool continueOnLaunch = false;
   bool mergeBookshelf = false;
   bool offlineMode = false;
   bool readerOnlyMode = false;
+  bool volumeKeyPaging = true; // 音量鍵翻頁
 
-  // 外觀
+  // 閱讀與外觀
   ThemeMode themeMode = ThemeMode.system;
   String languageLabel = '繁體中文 · 香港';
 
@@ -64,151 +32,122 @@ class AppSettings extends ChangeNotifier {
   bool reduceMotion = false;
   bool hapticFeedback = true;
 
-  // 統計與記錄
+  // 統計與書籤（保留與現有 settings_pages.dart 相容）
   bool recordTouches = true;
   int totalTouches = 0;
-  List<int> touchHeatmap = List.filled(14 * 10, 0);
-  List<HistoryRecord> history = [];
+  List<int> touchHeatmap = List<int>.filled(100, 0);
   Map<String, int> bookmarksByBook = {};
 
+  /// 在 main() 啟動時呼叫
   Future<void> load() async {
-    final p = await SharedPreferences.getInstance();
-    forcePortrait = p.getBool('set_forcePortrait') ?? false;
-    tapToReadDirectly = p.getBool('set_tapToRead') ?? false;
-    startupTab = p.getInt('set_startupTab') ?? 0;
-    continueOnLaunch = p.getBool('set_continueOnLaunch') ?? false;
-    mergeBookshelf = p.getBool('set_mergeBookshelf') ?? false;
-    offlineMode = p.getBool('set_offlineMode') ?? false;
-    readerOnlyMode = p.getBool('set_readerOnlyMode') ?? false;
-
-    final tm = p.getInt('set_themeMode') ?? 0;
-    themeMode = ThemeMode.values[tm.clamp(0, 2)];
-    languageLabel = p.getString('set_lang') ?? '繁體中文 · 香港';
-
-    refreshRatePref = p.getString('set_fps') ?? '自動高刷';
-    lowPerfMode = p.getBool('set_lowPerf') ?? false;
-    glassBlur = p.getDouble('set_glassBlur') ?? 8.0;
-    glassOpacity = p.getDouble('set_glassOpacity') ?? 0.87;
-    reduceMotion = p.getBool('set_reduceMotion') ?? false;
-    hapticFeedback = p.getBool('set_haptic') ?? true;
-
-    recordTouches = p.getBool('stat_recordTouches') ?? true;
-    totalTouches = p.getInt('stat_totalTouches') ?? 0;
-    final rawMap = p.getStringList('stat_heatmap');
-    if (rawMap != null && rawMap.length == 140) {
-      touchHeatmap = rawMap.map((e) => int.tryParse(e) ?? 0).toList();
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_settingsKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        _applyMap(Map<String, dynamic>.from(jsonDecode(raw)));
+      } catch (_) {}
     }
-
-    final rawHist = p.getStringList('reading_history') ?? [];
-    history = rawHist
-        .map((e) => HistoryRecord.fromJson(jsonDecode(e) as Map<String, dynamic>))
-        .toList();
-
-    final rawBm = p.getString('bookmarks_map');
-    if (rawBm != null) {
-      final decoded = jsonDecode(rawBm) as Map<String, dynamic>;
-      bookmarksByBook = decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
-    }
-
-    await _applyOrientation();
+    _applyOrientation();
     notifyListeners();
   }
 
-  Future<void> _applyOrientation() async {
-    if (forcePortrait) {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
-    } else {
-      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-    }
-  }
-
-  Future<void> update(VoidCallback fn) async {
+  void update(VoidCallback fn) {
     fn();
+    _applyOrientation();
     notifyListeners();
-    final p = await SharedPreferences.getInstance();
-    await p.setBool('set_forcePortrait', forcePortrait);
-    await p.setBool('set_tapToRead', tapToReadDirectly);
-    await p.setInt('set_startupTab', startupTab);
-    await p.setBool('set_continueOnLaunch', continueOnLaunch);
-    await p.setBool('set_mergeBookshelf', mergeBookshelf);
-    await p.setBool('set_offlineMode', offlineMode);
-    await p.setBool('set_readerOnlyMode', readerOnlyMode);
-    await p.setInt('set_themeMode', themeMode.index);
-    await p.setString('set_lang', languageLabel);
-    await p.setString('set_fps', refreshRatePref);
-    await p.setBool('set_lowPerf', lowPerfMode);
-    await p.setDouble('set_glassBlur', glassBlur);
-    await p.setDouble('set_glassOpacity', glassOpacity);
-    await p.setBool('set_reduceMotion', reduceMotion);
-    await p.setBool('set_haptic', hapticFeedback);
-    await p.setBool('stat_recordTouches', recordTouches);
-    await _applyOrientation();
+    _save();
   }
 
-  Future<void> addHistory(HistoryRecord rec) async {
-    history.removeWhere((h) => h.url == rec.url);
-    history.insert(0, rec);
-    if (history.length > 100) history = history.sublist(0, 100);
-    notifyListeners();
-    final p = await SharedPreferences.getInstance();
-    await p.setStringList(
-      'reading_history',
-      history.map((e) => jsonEncode(e.toJson())).toList(),
-    );
-  }
-
-  Future<void> clearHistory() async {
-    history.clear();
-    notifyListeners();
-    final p = await SharedPreferences.getInstance();
-    await p.remove('reading_history');
-  }
-
-  Future<void> recordTouchAt(int cellIndex) async {
-    if (!recordTouches || cellIndex < 0 || cellIndex >= touchHeatmap.length) return;
-    totalTouches++;
-    touchHeatmap[cellIndex]++;
-    notifyListeners();
-    final p = await SharedPreferences.getInstance();
-    await p.setInt('stat_totalTouches', totalTouches);
-    await p.setStringList(
-      'stat_heatmap',
-      touchHeatmap.map((e) => e.toString()).toList(),
-    );
-  }
-
-  Future<String> exportBackupJson() async {
-    final p = await SharedPreferences.getInstance();
-    return jsonEncode({
-      'bookshelf': p.getStringList('bookshelf') ?? [],
-      'history': p.getStringList('reading_history') ?? [],
-      'bookmarks': bookmarksByBook,
-    });
-  }
-
-  Future<bool> importBackupJson(String raw) async {
-    try {
-      final map = jsonDecode(raw) as Map<String, dynamic>;
-      final p = await SharedPreferences.getInstance();
-      if (map['bookshelf'] is List) {
-        await p.setStringList(
-          'bookshelf',
-          (map['bookshelf'] as List).map((e) => e.toString()).toList(),
-        );
-      }
-      if (map['history'] is List) {
-        await p.setStringList(
-          'reading_history',
-          (map['history'] as List).map((e) => e.toString()).toList(),
-        );
-      }
-      await load();
-      return true;
-    } catch (_) {
-      return false;
+  void _applyOrientation() {
+    if (forcePortrait) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    } else {
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     }
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_settingsKey, jsonEncode(_toMap()));
+  }
+
+  Map<String, dynamic> _toMap() => {
+        'forcePortrait': forcePortrait,
+        'tapToReadDirectly': tapToReadDirectly,
+        'startupTab': startupTab,
+        'continueOnLaunch': continueOnLaunch,
+        'mergeBookshelf': mergeBookshelf,
+        'offlineMode': offlineMode,
+        'readerOnlyMode': readerOnlyMode,
+        'volumeKeyPaging': volumeKeyPaging,
+        'themeMode': themeMode.index,
+        'languageLabel': languageLabel,
+        'refreshRatePref': refreshRatePref,
+        'lowPerfMode': lowPerfMode,
+        'glassBlur': glassBlur,
+        'glassOpacity': glassOpacity,
+        'reduceMotion': reduceMotion,
+        'hapticFeedback': hapticFeedback,
+        'recordTouches': recordTouches,
+        'totalTouches': totalTouches,
+      };
+
+  void _applyMap(Map<String, dynamic> m) {
+    forcePortrait = m['forcePortrait'] as bool? ?? forcePortrait;
+    tapToReadDirectly = m['tapToReadDirectly'] as bool? ?? tapToReadDirectly;
+    startupTab = m['startupTab'] as int? ?? startupTab;
+    continueOnLaunch = m['continueOnLaunch'] as bool? ?? continueOnLaunch;
+    mergeBookshelf = m['mergeBookshelf'] as bool? ?? mergeBookshelf;
+    offlineMode = m['offlineMode'] as bool? ?? offlineMode;
+    readerOnlyMode = m['readerOnlyMode'] as bool? ?? readerOnlyMode;
+    volumeKeyPaging = m['volumeKeyPaging'] as bool? ?? volumeKeyPaging;
+    final tmIdx = m['themeMode'] as int?;
+    if (tmIdx != null && tmIdx >= 0 && tmIdx < ThemeMode.values.length) {
+      themeMode = ThemeMode.values[tmIdx];
+    }
+    languageLabel = m['languageLabel'] as String? ?? languageLabel;
+    refreshRatePref = m['refreshRatePref'] as String? ?? refreshRatePref;
+    lowPerfMode = m['lowPerfMode'] as bool? ?? lowPerfMode;
+    glassBlur = (m['glassBlur'] as num?)?.toDouble() ?? glassBlur;
+    glassOpacity = (m['glassOpacity'] as num?)?.toDouble() ?? glassOpacity;
+    reduceMotion = m['reduceMotion'] as bool? ?? reduceMotion;
+    hapticFeedback = m['hapticFeedback'] as bool? ?? hapticFeedback;
+    recordTouches = m['recordTouches'] as bool? ?? recordTouches;
+    totalTouches = m['totalTouches'] as int? ?? totalTouches;
+  }
+
+  /// 匯出設定與閱讀歷史為 JSON
+  Future<String> exportBackupJson() async {
+    final prefs = await SharedPreferences.getInstance();
+    final historyRaw = prefs.getString(_historyKey);
+    final payload = {
+      'version': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'settings': _toMap(),
+      'history': historyRaw != null ? jsonDecode(historyRaw) : [],
+    };
+    return const JsonEncoder.withIndent('  ').convert(payload);
+  }
+
+  /// 從 JSON 還原設定與閱讀歷史
+  Future<void> importBackupJson(String jsonStr) async {
+    final data = jsonDecode(jsonStr);
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('備份格式不正確');
+    }
+    final prefs = await SharedPreferences.getInstance();
+    if (data['settings'] is Map) {
+      _applyMap(Map<String, dynamic>.from(data['settings']));
+      await prefs.setString(_settingsKey, jsonEncode(_toMap()));
+    }
+    if (data['history'] is List) {
+      await prefs.setString(_historyKey, jsonEncode(data['history']));
+    }
+    _applyOrientation();
+    notifyListeners();
+  }
+
+  void clearHistory() {
+    notifyListeners();
   }
 }
