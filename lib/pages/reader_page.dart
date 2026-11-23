@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../models/comic.dart';
+import '../services/app_settings.dart';
 import '../sources/comic_source.dart';
 
 enum ReadMode { horizontal, verticalPage, webtoon }
@@ -15,12 +16,14 @@ enum ReaderBgTheme { paper, beige, white, night, black }
 
 class ReaderPage extends StatefulWidget {
   final ComicSource source;
+  final ComicItem? comic;
   final List<ComicChapter> chapters;
   final int initialIndex;
 
   const ReaderPage({
     super.key,
     required this.source,
+    this.comic,
     required this.chapters,
     required this.initialIndex,
   });
@@ -36,11 +39,10 @@ class _ReaderPageState extends State<ReaderPage> {
   bool _showOverlay = true;
   String? _error;
 
-  int _currentPage = 0; // 永遠以「單頁索引 (0-based)」記錄，避免切換橫豎屏跑位
+  int _currentPage = 0;
   final PageController _pageController = PageController();
   final ScrollController _scrollController = ScrollController();
 
-  // 閱讀設定狀態
   ReadMode _readMode = ReadMode.horizontal;
   ReadDirection _readDirection = ReadDirection.rtl;
   DualPageMode _dualPageMode = DualPageMode.tabletAuto;
@@ -49,6 +51,63 @@ class _ReaderPageState extends State<ReaderPage> {
 
   ComicChapter get _currentChapter => widget.chapters[_currentIndex];
 
+  String get _cleanChapterTitle =>
+      _currentChapter.title.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  String get _comicTitle => widget.comic?.title.trim().isNotEmpty == true
+      ? widget.comic!.title.trim()
+      : _cleanChapterTitle;
+
+  String _nowFormatted() {
+    final now = DateTime.now();
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    return '$m/$d $hh:$mm';
+  }
+
+  void _saveReadingHistory() {
+    final percent = _images.isEmpty
+        ? 0
+        : (((_currentPage + 1) / _images.length) * 100).round().clamp(0, 100);
+    AppSettings.instance.addHistory(
+      HistoryRecord(
+        title: _comicTitle,
+        url: widget.comic?.url ?? _currentChapter.url,
+        cover: widget.comic?.cover ?? '',
+        sourceId: widget.source.id,
+        chapterTitle: _cleanChapterTitle,
+        pageIndex: _currentPage,
+        progressPercent: percent,
+        timestamp: _nowFormatted(),
+      ),
+    );
+  }
+
+  Future<void> _onToggleBookmark() async {
+    final added = await AppSettings.instance.toggleBookmark(
+      BookmarkItem(
+        comicTitle: _comicTitle,
+        comicUrl: widget.comic?.url ?? _currentChapter.url,
+        comicCover: widget.comic?.cover ?? '',
+        sourceId: widget.source.id,
+        chapterTitle: _cleanChapterTitle,
+        chapterUrl: _currentChapter.url,
+        pageIndex: _currentPage,
+        timestamp: _nowFormatted(),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 1),
+        content: Text(added ? '已加入書籤（第 ${_currentPage + 1} 頁）' : '已移除此頁書籤'),
+      ),
+    );
+  }
+
   bool _useDualPage(BuildContext context) {
     if (_readMode == ReadMode.webtoon) return false;
     if (_dualPageMode == DualPageMode.dual) return true;
@@ -56,13 +115,12 @@ class _ReaderPageState extends State<ReaderPage> {
     return MediaQuery.of(context).size.width >= 600;
   }
 
-  /// 改善後的頁數文字（平板雙頁顯示 1-2 / 13，單頁顯示 1 / 13）
   String _formatPageLabel(BuildContext context) {
     if (_images.isEmpty) return '載入中...';
     final total = _images.length;
     final isDual = _useDualPage(context);
     if (!isDual) {
-      return '${(_currentPage + 1).clamp(1, total)} / $total';
+      return '${(_currentPage + 1).clamp(1, total)} /$total';
     }
     final first = (_currentPage ~/ 2) * 2 + 1;
     final second = first + 1;
@@ -133,6 +191,7 @@ class _ReaderPageState extends State<ReaderPage> {
           _images = urls;
           _loading = false;
         });
+        _saveReadingHistory();
       }
     } catch (e) {
       if (mounted) {
@@ -148,6 +207,7 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_images.isEmpty) return;
     final target = pageIndex.clamp(0, _images.length - 1);
     setState(() => _currentPage = target);
+    _saveReadingHistory();
 
     if (_readMode == ReadMode.webtoon) {
       if (_scrollController.hasClients) {
@@ -180,7 +240,6 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
-  /// 點擊畫面左/中/右區域：左右平滑翻頁，中間開關工具列
   void _handleTap(TapUpDetails details) {
     final width = MediaQuery.of(context).size.width;
     final dx = details.localPosition.dx;
@@ -253,7 +312,7 @@ class _ReaderPageState extends State<ReaderPage> {
                           ),
                           const Spacer(),
                           Text(
-                            '${_currentIndex + 1} / ${widget.chapters.length}',
+                            '${_currentIndex + 1} /${widget.chapters.length}',
                             style: const TextStyle(
                               fontSize: 13,
                               color: Colors.black45,
@@ -321,7 +380,7 @@ class _ReaderPageState extends State<ReaderPage> {
                               ),
                             ),
                             title: Text(
-                              ch.title,
+                              ch.title.replaceAll(RegExp(r'\s+'), ' ').trim(),
                               style: TextStyle(
                                 fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
                                 color: const Color(0xFF1F1F1F),
@@ -584,9 +643,7 @@ class _ReaderPageState extends State<ReaderPage> {
     );
   }
 
-  /// 平板實體書中縫立體陰影
   Widget _buildBookCenterGutter() {
-    final shadowBase = _isDarkBg ? Colors.black : Colors.black;
     return IgnorePointer(
       child: Center(
         child: Container(
@@ -597,9 +654,9 @@ class _ReaderPageState extends State<ReaderPage> {
               end: Alignment.centerRight,
               colors: [
                 Colors.transparent,
-                shadowBase.withOpacity(_isDarkBg ? 0.35 : 0.08),
-                shadowBase.withOpacity(_isDarkBg ? 0.55 : 0.14),
-                shadowBase.withOpacity(_isDarkBg ? 0.35 : 0.08),
+                Colors.black.withOpacity(_isDarkBg ? 0.35 : 0.08),
+                Colors.black.withOpacity(_isDarkBg ? 0.55 : 0.14),
+                Colors.black.withOpacity(_isDarkBg ? 0.35 : 0.08),
                 Colors.transparent,
               ],
               stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
@@ -610,7 +667,6 @@ class _ReaderPageState extends State<ReaderPage> {
     );
   }
 
-  /// 極簡頂部指示線與 •••（對應截圖頂部視覺）
   Widget _buildMinimalTopIndicator() {
     final fg = _isDarkBg ? Colors.white38 : Colors.black38;
     return IgnorePointer(
@@ -698,8 +754,10 @@ class _ReaderPageState extends State<ReaderPage> {
           reverse: _readMode == ReadMode.horizontal &&
               _readDirection == ReadDirection.rtl,
           itemCount: pageCount,
-          onPageChanged: (idx) =>
-              setState(() => _currentPage = isDual ? idx * 2 : idx),
+          onPageChanged: (idx) {
+            setState(() => _currentPage = isDual ? idx * 2 : idx);
+            _saveReadingHistory();
+          },
           itemBuilder: (_, i) {
             Widget pageChild;
             if (!isDual) {
@@ -746,7 +804,6 @@ class _ReaderPageState extends State<ReaderPage> {
               );
             }
 
-            // 翻頁微縮放與淡入動畫
             return AnimatedBuilder(
               animation: _pageController,
               builder: (context, child) {
@@ -778,6 +835,8 @@ class _ReaderPageState extends State<ReaderPage> {
         ? const Color.fromRGBO(28, 28, 30, 0.92)
         : const Color.fromRGBO(247, 246, 242, 0.94);
     final topFg = _isDarkBg ? Colors.white : const Color(0xFF1F1F1F);
+    final isBookmarked =
+        AppSettings.instance.isBookmarked(_currentChapter.url, _currentPage);
 
     return Scaffold(
       backgroundColor: _backgroundColor,
@@ -788,13 +847,11 @@ class _ReaderPageState extends State<ReaderPage> {
             onTapUp: _handleTap,
             child: _buildReaderContent(),
           ),
-          // 隱藏工具列時顯示極簡頂部進度線與 •••
           AnimatedOpacity(
             duration: const Duration(milliseconds: 220),
             opacity: _showOverlay ? 0.0 : 1.0,
             child: _buildMinimalTopIndicator(),
           ),
-          // 頂部滑動動畫工具列
           Positioned(
             top: 0,
             left: 0,
@@ -825,7 +882,7 @@ class _ReaderPageState extends State<ReaderPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _currentChapter.title,
+                                    _cleanChapterTitle,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -835,15 +892,26 @@ class _ReaderPageState extends State<ReaderPage> {
                                     ),
                                   ),
                                   Text(
-                                    '${widget.source.name} / COMIC',
+                                    '$_comicTitle · ${widget.source.name}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: topFg.withOpacity(0.55),
-                                      fontFamily: 'monospace',
                                     ),
                                   ),
                                 ],
                               ),
+                            ),
+                            IconButton(
+                              tooltip: '書籤',
+                              icon: Icon(
+                                isBookmarked
+                                    ? Icons.bookmark_rounded
+                                    : Icons.bookmark_border_rounded,
+                                color: topFg,
+                              ),
+                              onPressed: _onToggleBookmark,
                             ),
                             IconButton(
                               tooltip: '目錄',
@@ -864,7 +932,6 @@ class _ReaderPageState extends State<ReaderPage> {
               ),
             ),
           ),
-          // 底部滑動動畫工具列
           Positioned(
             bottom: 0,
             left: 0,
