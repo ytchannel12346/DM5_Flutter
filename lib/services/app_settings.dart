@@ -98,6 +98,7 @@ class AppSettings extends ChangeNotifier {
   AppSettings._();
 
   // 使用方式
+  bool volumeKeyPaging = false;
   bool forcePortrait = false;
   bool tapToReadDirectly = false;
   int startupTab = 0; // 0:發現, 1:書架, 2:本地, 3:我的
@@ -135,6 +136,7 @@ class AppSettings extends ChangeNotifier {
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
+    volumeKeyPaging = p.getBool('set_volumeKeyPaging') ?? false;
     forcePortrait = p.getBool('set_forcePortrait') ?? false;
     tapToReadDirectly = p.getBool('set_tapToRead') ?? false;
     startupTab = p.getInt('set_startupTab') ?? 0;
@@ -190,6 +192,7 @@ class AppSettings extends ChangeNotifier {
     fn();
     notifyListeners();
     final p = await SharedPreferences.getInstance();
+    await p.setBool('set_volumeKeyPaging', volumeKeyPaging);
     await p.setBool('set_forcePortrait', forcePortrait);
     await p.setBool('set_tapToRead', tapToReadDirectly);
     await p.setInt('set_startupTab', startupTab);
