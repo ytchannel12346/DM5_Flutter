@@ -19,7 +19,7 @@ class UpdateInfo {
 
 class UpdateService {
   /// 請將 YOUR_USERNAME 改為你的 GitHub 帳號名稱
-  static const String repo = 'YOUR_USERNAME/DM5_Flutter';
+  static const String repo = 'ytchannel12346/DM5_Flutter';
 
   static const String currentVersion =
       String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');
