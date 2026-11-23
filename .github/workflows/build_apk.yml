@@ -49,10 +49,13 @@ jobs:
             cat << 'EOF' >> android/build.gradle.kts
 
           subprojects {
-              plugins.withId("com.android.library") {
-                  extensions.configure<com.android.build.gradle.BaseExtension>("android") {
-                      compileSdkVersion(36)
-                  }
+              val fixSdk: Project.() -> Unit = {
+                  extensions.findByType<com.android.build.gradle.BaseExtension>()?.compileSdkVersion(36)
+              }
+              if (state.executed) {
+                  fixSdk()
+              } else {
+                  afterEvaluate { fixSdk() }
               }
           }
           EOF
@@ -60,15 +63,21 @@ jobs:
             cat << 'EOF' >> android/build.gradle
 
           subprojects {
-              plugins.withId('com.android.library') {
-                  android {
-                      compileSdkVersion 36
+              def fixSdk = { proj ->
+                  if (proj.hasProperty('android')) {
+                      proj.android {
+                          compileSdkVersion 36
+                      }
                   }
+              }
+              if (state.executed) {
+                  fixSdk(project)
+              } else {
+                  afterEvaluate { fixSdk(project) }
               }
           }
           EOF
           fi
-          
 
       - name: Ensure INTERNET and cleartext traffic permissions
         run: |
