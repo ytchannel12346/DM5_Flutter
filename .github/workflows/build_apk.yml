@@ -9,7 +9,7 @@ on:
         type: boolean
         default: true
       build_ios:
-        description: '編譯 iOS IPA (消耗較多額度)'
+        description: '編譯 iOS IPA'
         required: true
         type: boolean
         default: false
@@ -42,6 +42,33 @@ jobs:
           if [ ! -d "android" ]; then
             flutter create . --platforms=android --org com.example.comicreader
           fi
+
+      - name: Force compileSdk 36 for plugins
+        run: |
+          if [ -f "android/build.gradle.kts" ]; then
+            cat << 'EOF' >> android/build.gradle.kts
+
+          subprojects {
+              plugins.withId("com.android.library") {
+                  extensions.configure<com.android.build.gradle.BaseExtension>("android") {
+                      compileSdkVersion(36)
+                  }
+              }
+          }
+          EOF
+          elif [ -f "android/build.gradle" ]; then
+            cat << 'EOF' >> android/build.gradle
+
+          subprojects {
+              plugins.withId('com.android.library') {
+                  android {
+                      compileSdkVersion 36
+                  }
+              }
+          }
+          EOF
+          fi
+          
 
       - name: Ensure INTERNET and cleartext traffic permissions
         run: |
