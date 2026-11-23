@@ -2,13 +2,9 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../models/comic.dart';
 import '../services/app_l10n.dart';
 import '../services/app_settings.dart';
-import '../services/history_service.dart';
 import '../sources/comic_source.dart';
-import '../sources/local_comic_source.dart';
-import 'reader_page.dart';
 
 /// 共用暖紙白設定頁外框
 class _ArchiveScaffold extends StatelessWidget {
@@ -99,6 +95,40 @@ Widget _cardBox({required Widget child, EdgeInsets? padding}) {
       border: Border.all(color: const Color(0xFFE5E2DA)),
     ),
     child: child,
+  );
+}
+
+Widget _emptyCoverBox() => Container(
+      width: 44,
+      height: 60,
+      color: const Color(0xFFEFEDE7),
+      child: const Icon(Icons.broken_image_outlined, size: 20, color: Colors.black38),
+    );
+
+Widget _buildCoverThumb(String cover, String sourceId, String refererUrl) {
+  if (cover.isEmpty) return _emptyCoverBox();
+  if (!cover.startsWith('http')) {
+    final file = File(cover);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        width: 44,
+        height: 60,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _emptyCoverBox(),
+      );
+    }
+    return _emptyCoverBox();
+  }
+  final src = SourceManager.getById(sourceId);
+  return CachedNetworkImage(
+    imageUrl: cover,
+    httpHeaders: src.getImageHeaders(refererUrl),
+    width: 44,
+    height: 60,
+    fit: BoxFit.cover,
+    placeholder: (_, __) => _emptyCoverBox(),
+    errorWidget: (_, __, ___) => _emptyCoverBox(),
   );
 }
 
@@ -514,72 +544,17 @@ class StorageSettingsPage extends StatelessWidget {
           _cardBox(
             child: ListTile(
               leading: const Icon(Icons.backup_outlined, color: Color(0xFF1F1F1F)),
-              title: Text(AppL10n.t('backup_restore'), style: const TextStyle(fontWeight: FontWeight.bold)),
+              title: const Text('備份與恢復', style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: const Text('匯出 JSON 到剪貼簿，或從剪貼簿恢復', style: TextStyle(fontSize: 12)),
               trailing: const Icon(Icons.chevron_right, color: Colors.black38),
-              onTap: () {
-                showModalBottomSheet(
-                  context: context,
-                  backgroundColor: const Color(0xFFF7F6F2),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  builder: (ctx) => SafeArea(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ListTile(
-                          leading: const Icon(Icons.upload_outlined),
-                          title: const Text('匯出備份到剪貼簿'),
-                          subtitle: const Text('包含所有設定與閱讀歷史'),
-                          onTap: () async {
-                            Navigator.pop(ctx);
-                            final jsonStr = await s.exportBackupJson();
-                            await Clipboard.setData(ClipboardData(text: jsonStr));
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('已將設定與閱讀歷史備份複製到剪貼簿')),
-                              );
-                            }
-                          },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: const Icon(Icons.download_outlined),
-                          title: const Text('從剪貼簿還原備份'),
-                          subtitle: const Text('覆蓋目前的設定與閱讀歷史'),
-                          onTap: () async {
-                            Navigator.pop(ctx);
-                            final clip = await Clipboard.getData(Clipboard.kTextPlain);
-                            final text = clip?.text?.trim() ?? '';
-                            if (text.isEmpty) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('剪貼簿沒有內容')),
-                                );
-                              }
-                              return;
-                            }
-                            try {
-                              await s.importBackupJson(text);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('備份還原成功')),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('還原失敗：$e')),
-                                );
-                              }
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                );
+              onTap: () async {
+                final jsonStr = await s.exportBackupJson();
+                await Clipboard.setData(ClipboardData(text: jsonStr));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已將書架、書籤與閱讀歷史備份複製到剪貼簿')),
+                  );
+                }
               },
             ),
           ),
@@ -604,173 +579,70 @@ class StorageSettingsPage extends StatelessWidget {
   }
 }
 
-/// 6. 閱讀歷史 (ARCHIVE / READING LOG)
-class ReadingHistoryPage extends StatefulWidget {
+/// 6. 閱讀歷史（顯示封面 + 正確書名 + 乾淨章節與頁數）
+class ReadingHistoryPage extends StatelessWidget {
   const ReadingHistoryPage({super.key});
 
   @override
-  State<ReadingHistoryPage> createState() => _ReadingHistoryPageState();
-}
-
-class _ReadingHistoryPageState extends State<ReadingHistoryPage> {
-  List<ReadHistoryItem> _items = [];
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _refresh();
-  }
-
-  Future<void> _refresh() async {
-    setState(() => _loading = true);
-    final items = await HistoryService.loadHistory();
-    if (mounted) {
-      setState(() {
-        _items = items;
-        _loading = false;
-      });
-    }
-  }
-
-  void _openHistory(ReadHistoryItem item) {
-    final source = item.sourceId == 'local'
-        ? LocalComicSource()
-        : SourceManager.getById(item.sourceId);
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReaderPage(
-          source: source,
-          chapters: [
-            ComicChapter(title: item.chapterTitle, url: item.chapterUrl),
+  Widget build(BuildContext context) {
+    final s = AppSettings.instance;
+    return ListenableBuilder(
+      listenable: s,
+      builder: (_, __) => _ArchiveScaffold(
+        title: AppL10n.t('history'),
+        subtitle: 'ARCHIVE / READING LOG',
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline, color: Color(0xFF1F1F1F)),
+          onPressed: () => s.clearHistory(),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          children: [
+            _sectionTag('02 / READING LOG', '最近閱讀 (${s.history.length} 本書)'),
+            const Text(
+              '未收藏的作品也會記錄。長按單筆可移除記錄，書架與進度保留。',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 14),
+            if (s.history.isEmpty)
+              _cardBox(
+                padding: const EdgeInsets.all(24),
+                child: const Center(child: Text('暫無閱讀歷史記錄', style: TextStyle(color: Colors.black54))),
+              )
+            else
+              ...s.history.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final h = entry.value;
+                return _cardBox(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: _buildCoverThumb(h.cover, h.sourceId, h.url),
+                    ),
+                    title: Text(
+                      h.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    subtitle: Text(
+                      '${h.chapterTitle} · 第 ${h.pageIndex + 1} 頁\n${h.timestamp}',
+                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                    isThreeLine: true,
+                    onLongPress: () => s.removeHistoryAt(idx),
+                  ),
+                );
+              }),
           ],
-          initialIndex: 0,
         ),
       ),
-    ).then((_) => _refresh());
-  }
-
-  String _formatTime(int millis) {
-    if (millis <= 0) return '';
-    final dt = DateTime.fromMillisecondsSinceEpoch(millis);
-    final m = dt.month.toString().padLeft(2, '0');
-    final d = dt.day.toString().padLeft(2, '0');
-    final h = dt.hour.toString().padLeft(2, '0');
-    final min = dt.minute.toString().padLeft(2, '0');
-    return '$m/$d $h:$min';
-  }
-
-  Widget _buildCover(ReadHistoryItem item) {
-    if (item.cover.isEmpty) {
-      return Container(
-        width: 48,
-        height: 64,
-        color: Colors.black12,
-        child: const Icon(Icons.menu_book_outlined, color: Colors.black38),
-      );
-    }
-    if (!item.cover.startsWith('http://') &&
-        !item.cover.startsWith('https://')) {
-      return Image.file(
-        File(item.cover),
-        width: 48,
-        height: 64,
-        fit: BoxFit.cover,
-      );
-    }
-    final source = SourceManager.getById(item.sourceId);
-    return CachedNetworkImage(
-      imageUrl: item.cover,
-      httpHeaders: source.getImageHeaders(item.comicUrl),
-      width: 48,
-      height: 64,
-      fit: BoxFit.cover,
-      errorWidget: (_, __, ___) => Container(
-        width: 48,
-        height: 64,
-        color: Colors.black12,
-        child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _ArchiveScaffold(
-      title: AppL10n.t('history'),
-      subtitle: 'ARCHIVE / READING LOG',
-      trailing: IconButton(
-        icon: const Icon(Icons.delete_outline, color: Color(0xFF1F1F1F)),
-        onPressed: () async {
-          await HistoryService.clearAll();
-          AppSettings.instance.clearHistory();
-          await _refresh();
-        },
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-              children: [
-                _sectionTag('02 / READING LOG', '最近閱讀 (${_items.length} 本書)'),
-                const Text(
-                  '未收藏的作品也會記錄。長按單筆可移除記錄，點擊可直接續讀。',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-                const SizedBox(height: 14),
-                if (_items.isEmpty)
-                  _cardBox(
-                    padding: const EdgeInsets.all(24),
-                    child: const Center(
-                      child: Text(
-                        '暫無閱讀歷史記錄',
-                        style: TextStyle(color: Colors.black54),
-                      ),
-                    ),
-                  )
-                else
-                  ..._items.map(
-                    (h) => _cardBox(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: _buildCover(h),
-                        ),
-                        title: Text(
-                          h.comicTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          '${h.chapterTitle} · 第 ${h.pageIndex + 1} 頁\n${_formatTime(h.updatedAt)}',
-                        ),
-                        isThreeLine: true,
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                          color: Colors.black38,
-                        ),
-                        onTap: () => _openHistory(h),
-                        onLongPress: () async {
-                          await HistoryService.removeItem(h);
-                          await _refresh();
-                        },
-                      ),
-                    ),
-                  ),
-              ],
-            ),
     );
   }
 }
 
-/// 7. 離線緩存 (ARCHIVE / LOCAL STORAGE)
+/// 7. 離線緩存
 class OfflineCachePage extends StatelessWidget {
   const OfflineCachePage({super.key});
 
@@ -804,7 +676,7 @@ class OfflineCachePage extends StatelessWidget {
   }
 }
 
-/// 8. 書籤 (PERSONAL / EXCERPTS)
+/// 8. 書籤
 class BookmarksPage extends StatelessWidget {
   const BookmarksPage({super.key});
 
@@ -819,20 +691,32 @@ class BookmarksPage extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: [
-            _sectionTag('01 / EXCERPTS', '書籤分類 (${s.bookmarksByBook.length} 本書)'),
-            if (s.bookmarksByBook.isEmpty)
+            _sectionTag('01 / EXCERPTS', '書籤列表 (${s.bookmarks.length} 條)'),
+            if (s.bookmarks.isEmpty)
               _cardBox(
                 padding: const EdgeInsets.all(24),
                 child: const Center(child: Text('暫無書籤與標記', style: TextStyle(color: Colors.black54))),
               )
             else
-              ...s.bookmarksByBook.entries.map(
-                (e) => _cardBox(
+              ...s.bookmarks.map(
+                (b) => _cardBox(
                   child: ListTile(
-                    leading: const Icon(Icons.menu_book_outlined, color: Color(0xFF1F1F1F)),
-                    title: Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('${e.value} 條書籤與標記'),
-                    trailing: const Icon(Icons.chevron_right, color: Colors.black38),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: _buildCoverThumb(b.comicCover, b.sourceId, b.comicUrl),
+                    ),
+                    title: Text(
+                      b.comicTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text('${b.chapterTitle} · 第 ${b.pageIndex + 1} 頁\n${b.timestamp}'),
+                    isThreeLine: true,
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20, color: Colors.black45),
+                      onPressed: () => s.removeBookmark(b.id),
+                    ),
                   ),
                 ),
               ),
@@ -843,7 +727,7 @@ class BookmarksPage extends StatelessWidget {
   }
 }
 
-/// 9. 統計 (PERSONAL / READING RECORDS - 含指尖落點熱力圖)
+/// 9. 統計（含指尖落點熱力圖）
 class StatsPage extends StatefulWidget {
   const StatsPage({super.key});
 
