@@ -510,8 +510,93 @@ class PerformanceSettingsPage extends StatelessWidget {
 }
 
 /// 5. 數據與存儲 (SYSTEM / STORAGE)
+/// 5. 數據與存儲 (SYSTEM / STORAGE)
 class StorageSettingsPage extends StatelessWidget {
   const StorageSettingsPage({super.key});
+
+  Future<void> _showRestoreDialog(BuildContext context, AppSettings s) async {
+    final controller = TextEditingController();
+    final restored = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFFF7F6F2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          '還原備份',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '請貼上先前匯出的備份 JSON 字串，還原後會覆蓋目前的書架、書籤與閱讀歷史。',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              maxLines: 5,
+              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+              decoration: InputDecoration(
+                hintText: '{"bookshelf":[...],"history":[...]}',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFE5E2DA)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                icon: const Icon(Icons.content_paste_rounded, size: 16),
+                label: const Text('從剪貼簿貼上'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF1F1F1F),
+                ),
+                onPressed: () async {
+                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                  if (data?.text != null) {
+                    controller.text = data!.text!;
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消', style: TextStyle(color: Colors.black54)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF1F1F1F),
+            ),
+            onPressed: () async {
+              final ok = await s.importBackupJson(controller.text.trim());
+              if (ctx.mounted) Navigator.pop(ctx, ok);
+            },
+            child: const Text('確認還原'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (restored != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            restored ? '備份還原成功！書架、書籤與閱讀歷史已更新' : '還原失敗：備份格式無效',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -542,20 +627,32 @@ class StorageSettingsPage extends StatelessWidget {
           ),
           _sectionTag('01 / CATALOG', '備份與清理'),
           _cardBox(
-            child: ListTile(
-              leading: const Icon(Icons.backup_outlined, color: Color(0xFF1F1F1F)),
-              title: const Text('備份與恢復', style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text('匯出 JSON 到剪貼簿，或從剪貼簿恢復', style: TextStyle(fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right, color: Colors.black38),
-              onTap: () async {
-                final jsonStr = await s.exportBackupJson();
-                await Clipboard.setData(ClipboardData(text: jsonStr));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已將書架、書籤與閱讀歷史備份複製到剪貼簿')),
-                  );
-                }
-              },
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.backup_outlined, color: Color(0xFF1F1F1F)),
+                  title: const Text('匯出備份', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('將書架、書籤與閱讀歷史複製為 JSON', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.copy_rounded, size: 18, color: Colors.black38),
+                  onTap: () async {
+                    final jsonStr = await s.exportBackupJson();
+                    await Clipboard.setData(ClipboardData(text: jsonStr));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('已將書架、書籤與閱讀歷史備份複製到剪貼簿')),
+                      );
+                    }
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.restore_rounded, color: Color(0xFF1F1F1F)),
+                  title: const Text('還原備份', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('從剪貼簿或手動貼上備份 JSON 恢復資料', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.black38),
+                  onTap: () => _showRestoreDialog(context, s),
+                ),
+              ],
             ),
           ),
           _cardBox(
