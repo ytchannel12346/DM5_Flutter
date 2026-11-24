@@ -1,5 +1,7 @@
+import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/comic.dart';
 import '../services/app_settings.dart';
 import '../sources/comic_source.dart';
@@ -13,6 +15,8 @@ enum DualPageMode { single, tabletAuto, dual }
 enum ImageFitMode { contain, fitWidth, fitHeight }
 
 enum ReaderBgTheme { paper, beige, white, night, black }
+
+enum PageTurnAnimation { flip3d, cover, slide, none }
 
 class ReaderPage extends StatefulWidget {
   final ComicSource source;
@@ -42,12 +46,14 @@ class _ReaderPageState extends State<ReaderPage> {
   int _currentPage = 0;
   final PageController _pageController = PageController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
 
   ReadMode _readMode = ReadMode.horizontal;
   ReadDirection _readDirection = ReadDirection.rtl;
   DualPageMode _dualPageMode = DualPageMode.tabletAuto;
   ImageFitMode _fitMode = ImageFitMode.contain;
   ReaderBgTheme _bgTheme = ReaderBgTheme.paper;
+  PageTurnAnimation _turnAnimation = PageTurnAnimation.flip3d;
 
   ComicChapter get _currentChapter => widget.chapters[_currentIndex];
 
@@ -120,7 +126,7 @@ class _ReaderPageState extends State<ReaderPage> {
     final total = _images.length;
     final isDual = _useDualPage(context);
     if (!isDual) {
-      return '${(_currentPage + 1).clamp(1, total)} /$total';
+      return '${(_currentPage + 1).clamp(1, total)} / $total';
     }
     final first = (_currentPage ~/ 2) * 2 + 1;
     final second = first + 1;
@@ -168,10 +174,14 @@ class _ReaderPageState extends State<ReaderPage> {
   void initState() {
     super.initState();
     _loadChapter();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _pageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -206,6 +216,10 @@ class _ReaderPageState extends State<ReaderPage> {
   void _jumpToPage(int pageIndex, {bool animate = false}) {
     if (_images.isEmpty) return;
     final target = pageIndex.clamp(0, _images.length - 1);
+    final shouldAnimate = animate &&
+        _turnAnimation != PageTurnAnimation.none &&
+        !AppSettings.instance.reduceMotion;
+
     setState(() => _currentPage = target);
     _saveReadingHistory();
 
@@ -213,7 +227,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (_scrollController.hasClients) {
         final maxScroll = _scrollController.position.maxScrollExtent;
         final ratio = _images.length > 1 ? target / (_images.length - 1) : 0.0;
-        if (animate) {
+        if (shouldAnimate) {
           _scrollController.animateTo(
             maxScroll * ratio,
             duration: const Duration(milliseconds: 280),
@@ -227,10 +241,12 @@ class _ReaderPageState extends State<ReaderPage> {
       if (_pageController.hasClients) {
         final isDual = _useDualPage(context);
         final spreadIdx = isDual ? target ~/ 2 : target;
-        if (animate) {
+        if (shouldAnimate) {
           _pageController.animateToPage(
             spreadIdx,
-            duration: const Duration(milliseconds: 300),
+            duration: Duration(
+              milliseconds: _turnAnimation == PageTurnAnimation.flip3d ? 380 : 280,
+            ),
             curve: Curves.easeOutCubic,
           );
         } else {
@@ -238,6 +254,89 @@ class _ReaderPageState extends State<ReaderPage> {
         }
       }
     }
+  }
+
+  /// 統一翻頁方法（點擊與音量鍵共用）
+  void _turnPage({required bool next}) {
+    if (_loading || _images.isEmpty) return;
+
+    if (AppSettings.instance.hapticFeedback) {
+      HapticFeedback.selectionClick();
+    }
+
+    if (_readMode == ReadMode.webtoon) {
+      if (!_scrollController.hasClients) return;
+      final viewport = MediaQuery.of(context).size.height * 0.75;
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final target = (_scrollController.offset + (next ? viewport : -viewport))
+          .clamp(0.0, maxScroll);
+      if (AppSettings.instance.reduceMotion ||
+          _turnAnimation == PageTurnAnimation.none) {
+        _scrollController.jumpTo(target);
+      } else {
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+
+    final isDual = _useDualPage(context);
+    final step = isDual ? 2 : 1;
+
+    if (next) {
+      if (_currentPage + step < _images.length) {
+        _jumpToPage(_currentPage + step, animate: true);
+      }
+    } else {
+      if (_currentPage - step >= 0) {
+        _jumpToPage(_currentPage - step, animate: true);
+      } else if (_currentPage > 0) {
+        _jumpToPage(0, animate: true);
+      }
+    }
+  }
+
+  /// 處理音量鍵與實體鍵盤翻頁
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+
+    // 音量鍵翻頁（需在「設定 → 使用方式」開啟）
+    if (key == LogicalKeyboardKey.audioVolumeDown ||
+        key == LogicalKeyboardKey.audioVolumeUp) {
+      if (!AppSettings.instance.volumeKeyPaging) {
+        return KeyEventResult.ignored;
+      }
+      _turnPage(next: key == LogicalKeyboardKey.audioVolumeDown);
+      return KeyEventResult.handled;
+    }
+
+    // 鍵盤方向鍵／翻頁鍵支援
+    if (key == LogicalKeyboardKey.pageDown ||
+        key == LogicalKeyboardKey.arrowDown) {
+      _turnPage(next: true);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.pageUp || key == LogicalKeyboardKey.arrowUp) {
+      _turnPage(next: false);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _turnPage(next: _readDirection == ReadDirection.ltr);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _turnPage(next: _readDirection == ReadDirection.rtl);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   void _handleTap(TapUpDetails details) {
@@ -249,22 +348,9 @@ class _ReaderPageState extends State<ReaderPage> {
       return;
     }
 
-    final isDual = _useDualPage(context);
-    final step = isDual ? 2 : 1;
     final tappedRight = dx >= width * 0.72;
     final goNext = _readDirection == ReadDirection.rtl ? !tappedRight : tappedRight;
-
-    if (goNext) {
-      if (_currentPage + step < _images.length) {
-        _jumpToPage(_currentPage + step, animate: true);
-      }
-    } else {
-      if (_currentPage - step >= 0) {
-        _jumpToPage(_currentPage - step, animate: true);
-      } else if (_currentPage > 0) {
-        _jumpToPage(0, animate: true);
-      }
-    }
+    _turnPage(next: goNext);
   }
 
   void _openTocSheet() {
@@ -312,7 +398,7 @@ class _ReaderPageState extends State<ReaderPage> {
                           ),
                           const Spacer(),
                           Text(
-                            '${_currentIndex + 1} /${widget.chapters.length}',
+                            '${_currentIndex + 1} / ${widget.chapters.length}',
                             style: const TextStyle(
                               fontSize: 13,
                               color: Colors.black45,
@@ -411,7 +497,9 @@ class _ReaderPageState extends State<ReaderPage> {
           },
         );
       },
-    );
+    ).whenComplete(() {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   void _openSettingsSheet() {
@@ -477,6 +565,18 @@ class _ReaderPageState extends State<ReaderPage> {
                       onSelected: (v) => update(() => _readMode = v),
                     ),
                     const SizedBox(height: 16),
+                    _sectionLabel('翻頁動畫'),
+                    _segmentedControl<PageTurnAnimation>(
+                      selected: _turnAnimation,
+                      options: const {
+                        PageTurnAnimation.flip3d: '擬真翻書',
+                        PageTurnAnimation.cover: '覆蓋',
+                        PageTurnAnimation.slide: '滑動',
+                        PageTurnAnimation.none: '無動畫',
+                      },
+                      onSelected: (v) => update(() => _turnAnimation = v),
+                    ),
+                    const SizedBox(height: 16),
                     _sectionLabel('閱讀方向'),
                     _segmentedControl<ReadDirection>(
                       selected: _readDirection,
@@ -528,7 +628,9 @@ class _ReaderPageState extends State<ReaderPage> {
           },
         );
       },
-    );
+    ).whenComplete(() {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   Widget _circleCloseButton(VoidCallback onTap) {
@@ -709,6 +811,125 @@ class _ReaderPageState extends State<ReaderPage> {
     );
   }
 
+  /// 套用翻書／覆蓋／滑動動畫效果
+  Widget _applyPageTransition(int index, Widget child, bool isReverse) {
+    if (_turnAnimation == PageTurnAnimation.none ||
+        AppSettings.instance.reduceMotion) {
+      return child;
+    }
+
+    return AnimatedBuilder(
+      animation: _pageController,
+      builder: (context, innerChild) {
+        if (!_pageController.position.haveDimensions) return innerChild!;
+        final current = _pageController.page ?? index.toDouble();
+        final delta = (current - index).clamp(-1.0, 1.0);
+
+        if (_turnAnimation == PageTurnAnimation.slide) {
+          final scale = (1 - (delta.abs() * 0.04)).clamp(0.94, 1.0);
+          return Transform.scale(scale: scale, child: innerChild);
+        }
+
+        if (_turnAnimation == PageTurnAnimation.cover) {
+          // 覆蓋翻頁：前頁微縮並變暗，新頁從上方滑入
+          if (delta > 0) {
+            final scale = (1 - delta * 0.06).clamp(0.92, 1.0);
+            return Transform.scale(
+              scale: scale,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  innerChild!,
+                  IgnorePointer(
+                    child: Container(
+                      color: Colors.black.withOpacity((delta * 0.35).clamp(0.0, 0.35)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+          return innerChild!;
+        }
+
+        // PageTurnAnimation.flip3d：3D 擬真翻書
+        if (_readMode == ReadMode.verticalPage) {
+          final angle = delta * (math.pi / 3.2);
+          final matrix = Matrix4.identity()
+            ..setEntry(3, 2, 0.0012)
+            ..rotateX(angle);
+          return Transform(
+            transform: matrix,
+            alignment: delta >= 0 ? Alignment.topCenter : Alignment.bottomCenter,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                innerChild!,
+                IgnorePointer(
+                  child: Container(
+                    color: Colors.black.withOpacity((delta.abs() * 0.38).clamp(0.0, 0.38)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // 橫向 3D 翻書：翻過去的那一頁沿書脊旋轉並產生紙張折疊陰影
+        if (delta > 0) {
+          final angle = (isReverse ? 1 : -1) * delta * (math.pi / 2.25);
+          final matrix = Matrix4.identity()
+            ..setEntry(3, 2, 0.0014)
+            ..rotateY(angle);
+          return Transform(
+            transform: matrix,
+            alignment: isReverse ? Alignment.centerRight : Alignment.centerLeft,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                innerChild!,
+                IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: isReverse ? Alignment.centerLeft : Alignment.centerRight,
+                        end: isReverse ? Alignment.centerRight : Alignment.centerLeft,
+                        colors: [
+                          Colors.black.withOpacity((delta * 0.48).clamp(0.0, 0.48)),
+                          Colors.black.withOpacity((delta * 0.14).clamp(0.0, 0.14)),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        } else {
+          // 下一頁在底層微微放大並由暗轉亮，模擬翻開紙頁的效果
+          final progress = -delta;
+          final scale = (1.0 - progress * 0.04).clamp(0.95, 1.0);
+          return Transform.scale(
+            scale: scale,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                innerChild!,
+                IgnorePointer(
+                  child: Container(
+                    color: Colors.black.withOpacity((progress * 0.32).clamp(0.0, 0.32)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+      },
+      child: child,
+    );
+  }
+
   Widget _buildReaderContent() {
     if (_loading) {
       return Center(
@@ -743,6 +964,8 @@ class _ReaderPageState extends State<ReaderPage> {
     }
 
     final isDual = _useDualPage(context);
+    final isReverse = _readMode == ReadMode.horizontal &&
+        _readDirection == ReadDirection.rtl;
     final pageCount = isDual ? (_images.length / 2).ceil() : _images.length;
 
     return Stack(
@@ -751,8 +974,7 @@ class _ReaderPageState extends State<ReaderPage> {
           controller: _pageController,
           scrollDirection:
               _readMode == ReadMode.horizontal ? Axis.horizontal : Axis.vertical,
-          reverse: _readMode == ReadMode.horizontal &&
-              _readDirection == ReadDirection.rtl,
+          reverse: isReverse,
           itemCount: pageCount,
           onPageChanged: (idx) {
             setState(() => _currentPage = isDual ? idx * 2 : idx);
@@ -804,24 +1026,7 @@ class _ReaderPageState extends State<ReaderPage> {
               );
             }
 
-            return AnimatedBuilder(
-              animation: _pageController,
-              builder: (context, child) {
-                double value = 1.0;
-                if (_pageController.position.haveDimensions) {
-                  final page = _pageController.page ?? i.toDouble();
-                  value = (1 - ((page - i).abs() * 0.06)).clamp(0.92, 1.0);
-                }
-                return Transform.scale(
-                  scale: value,
-                  child: Opacity(
-                    opacity: value.clamp(0.75, 1.0),
-                    child: child,
-                  ),
-                );
-              },
-              child: pageChild,
-            );
+            return _applyPageTransition(i, pageChild, isReverse);
           },
         ),
         if (isDual) _buildBookCenterGutter(),
@@ -838,90 +1043,152 @@ class _ReaderPageState extends State<ReaderPage> {
     final isBookmarked =
         AppSettings.instance.isBookmarked(_currentChapter.url, _currentPage);
 
-    return Scaffold(
-      backgroundColor: _backgroundColor,
-      body: Stack(
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: _handleTap,
-            child: _buildReaderContent(),
-          ),
-          AnimatedOpacity(
-            duration: const Duration(milliseconds: 220),
-            opacity: _showOverlay ? 0.0 : 1.0,
-            child: _buildMinimalTopIndicator(),
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: AnimatedSlide(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              offset: _showOverlay ? Offset.zero : const Offset(0, -1),
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: _showOverlay ? 1.0 : 0.0,
-                child: IgnorePointer(
-                  ignoring: !_showOverlay,
-                  child: Container(
-                    color: topBg,
-                    child: SafeArea(
-                      bottom: false,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: _handleKeyEvent,
+      child: Scaffold(
+        backgroundColor: _backgroundColor,
+        body: Stack(
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: _handleTap,
+              child: _buildReaderContent(),
+            ),
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 220),
+              opacity: _showOverlay ? 0.0 : 1.0,
+              child: _buildMinimalTopIndicator(),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                offset: _showOverlay ? Offset.zero : const Offset(0, -1),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _showOverlay ? 1.0 : 0.0,
+                  child: IgnorePointer(
+                    ignoring: !_showOverlay,
+                    child: Container(
+                      color: topBg,
+                      child: SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.chevron_left, color: topFg, size: 28),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _cleanChapterTitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: topFg,
+                                      ),
+                                    ),
+                                    Text(
+                                      '$_comicTitle · ${widget.source.name}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: topFg.withOpacity(0.55),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: '書籤',
+                                icon: Icon(
+                                  isBookmarked
+                                      ? Icons.bookmark_rounded
+                                      : Icons.bookmark_border_rounded,
+                                  color: topFg,
+                                ),
+                                onPressed: _onToggleBookmark,
+                              ),
+                              IconButton(
+                                tooltip: '目錄',
+                                icon: Icon(Icons.format_list_bulleted_rounded, color: topFg),
+                                onPressed: _openTocSheet,
+                              ),
+                              IconButton(
+                                tooltip: '閱讀設定',
+                                icon: Icon(Icons.tune_rounded, color: topFg),
+                                onPressed: _openSettingsSheet,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                offset: _showOverlay ? Offset.zero : const Offset(0, 1),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _showOverlay ? 1.0 : 0.0,
+                  child: IgnorePointer(
+                    ignoring: !_showOverlay,
+                    child: Container(
+                      color: topBg,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: SafeArea(
+                        top: false,
                         child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            IconButton(
-                              icon: Icon(Icons.chevron_left, color: topFg, size: 28),
-                              onPressed: () => Navigator.pop(context),
+                            TextButton.icon(
+                              onPressed: _currentIndex < widget.chapters.length - 1
+                                  ? () {
+                                      _currentIndex++;
+                                      _loadChapter();
+                                    }
+                                  : null,
+                              icon: Icon(Icons.chevron_left, color: topFg),
+                              label: Text('上一話', style: TextStyle(color: topFg)),
                             ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _cleanChapterTitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: topFg,
-                                    ),
-                                  ),
-                                  Text(
-                                    '$_comicTitle · ${widget.source.name}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: topFg.withOpacity(0.55),
-                                    ),
-                                  ),
-                                ],
+                            Text(
+                              _formatPageLabel(context),
+                              style: TextStyle(
+                                color: topFg.withOpacity(0.75),
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            IconButton(
-                              tooltip: '書籤',
-                              icon: Icon(
-                                isBookmarked
-                                    ? Icons.bookmark_rounded
-                                    : Icons.bookmark_border_rounded,
-                                color: topFg,
-                              ),
-                              onPressed: _onToggleBookmark,
-                            ),
-                            IconButton(
-                              tooltip: '目錄',
-                              icon: Icon(Icons.format_list_bulleted_rounded, color: topFg),
-                              onPressed: _openTocSheet,
-                            ),
-                            IconButton(
-                              tooltip: '閱讀設定',
-                              icon: Icon(Icons.tune_rounded, color: topFg),
-                              onPressed: _openSettingsSheet,
+                            TextButton.icon(
+                              onPressed: _currentIndex > 0
+                                  ? () {
+                                      _currentIndex--;
+                                      _loadChapter();
+                                    }
+                                  : null,
+                              icon: Icon(Icons.chevron_right, color: topFg),
+                              label: Text('下一話', style: TextStyle(color: topFg)),
                             ),
                           ],
                         ),
@@ -931,65 +1198,8 @@ class _ReaderPageState extends State<ReaderPage> {
                 ),
               ),
             ),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: AnimatedSlide(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              offset: _showOverlay ? Offset.zero : const Offset(0, 1),
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: _showOverlay ? 1.0 : 0.0,
-                child: IgnorePointer(
-                  ignoring: !_showOverlay,
-                  child: Container(
-                    color: topBg,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: SafeArea(
-                      top: false,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          TextButton.icon(
-                            onPressed: _currentIndex < widget.chapters.length - 1
-                                ? () {
-                                    _currentIndex++;
-                                    _loadChapter();
-                                  }
-                                : null,
-                            icon: Icon(Icons.chevron_left, color: topFg),
-                            label: Text('上一話', style: TextStyle(color: topFg)),
-                          ),
-                          Text(
-                            _formatPageLabel(context),
-                            style: TextStyle(
-                              color: topFg.withOpacity(0.75),
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          TextButton.icon(
-                            onPressed: _currentIndex > 0
-                                ? () {
-                                    _currentIndex--;
-                                    _loadChapter();
-                                  }
-                                : null,
-                            icon: Icon(Icons.chevron_right, color: topFg),
-                            label: Text('下一話', style: TextStyle(color: topFg)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
